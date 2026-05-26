@@ -1,0 +1,60 @@
+{
+  "summary": {
+    "run_id": "mabench_6k_20260511_1019",
+    "created_at": "2026-05-11T17:19:36.594998",
+    "engram_url": "https://engram2.supertux.com",
+    "context_depth": "6k",
+    "top_k": 20,
+    "total_questions": 3,
+    "correct": 3,
+    "accuracy": 100.0,
+    "elapsed_s": 12.5,
+    "by_dataset": [
+      {
+        "dataset_id": "sf-sh",
+        "name": "Single-hop",
+        "correct": 3,
+        "total": 3,
+        "accuracy": 100.0
+      }
+    ]
+  },
+  "results": [
+    {
+      "row_id": "mabench-sf-sh-0000-1778519964",
+      "dataset_id": "sf-sh",
+      "q_idx": 0,
+      "question": "Which sport is goaltender associated with?",
+      "gold_answers": [
+        "pes\u00e4pallo"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519964",
+      "dataset_id": "sf-sh",
+      "q_idx": 1,
+      "question": "What is Nobuhiro Watsuki famous for?",
+      "gold_answers": [
+        "The Fairly OddParents"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519964",
+      "dataset_id": "sf-sh",
+      "q_idx": 2,
+      "question": "Which country was rugby union created in?",
+      "gold_answers": [
+        "India"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    }
+  ]
+}

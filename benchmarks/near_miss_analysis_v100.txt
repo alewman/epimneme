@@ -1,0 +1,92 @@
+v1.00 NEAR-MISS ANALYSIS — 40 cases (R@1=0, R@3=1.0)
+Baseline: 84.6% R@1 (423/500)
+====================================================================================================
+
+LEGEND:
+  gap       = rank1_score - correct_score (how far correct is behind)
+  tp_r1     = rank-1 item has [USER]+[ASSISTANT] turn-pair
+  tp_cor    = correct item has [USER]+[ASSISTANT] turn-pair
+  tp_effect = 'WIN' (only correct has pair → boost helps)
+              'HURT' (only rank1 has pair → boost hurts)
+              'NEUTRAL' (both or neither have pair)
+  t_mismatch= question uses relative date AND rank1_date != correct_date
+
+PREDICTIONS (v1.1 changes):
+  Turn-pair boost (+0.008): net +3 flips expected
+  question_date anchor: fixes relative date cases where dates diverge
+
+  #  QID                             TYPE                      gap        tp   t_mis  Q (truncated)
+---  ------------------------------  --------------------  -------  --------  ------  --------------------------------------------------
+  1  58ef2f1c                        single-session-user    0.0160   neutral          "When did I volunteer at the local animal shelter's fundraisi"
+  2  6b168ec8                        single-session-user    0.0360   neutral          'How many bikes do I own?'
+  3  b86304ba                        single-session-user    0.0110       WIN          'How much is the painting of a sunset worth in terms of the a'
+  4  f4f1d8a4_abs                    single-session-user    0.0050       WIN          'What did my dad gave me as a birthday gift?'
+  5  gpt4_a56e767c                   multi-session          0.0310      HURT          'How many movie festivals that I attended?'
+  6  2e6d26dc                        multi-session          0.0070       WIN          'How many babies were born to friends and family members in t'
+  7  2ce6a0f2                        multi-session          0.0000   neutral          'How many different art-related events did I attend in the pa'
+  8  00ca467f                        multi-session          0.0010   neutral          "How many doctor's appointments did I go to in March?"
+  9  2788b940                        multi-session          0.0370   neutral          'How many fitness classes do I attend in a typical week?'
+ 10  10d9b85a                        multi-session          0.0020   neutral          'How many days did I spend attending workshops, lectures, and'
+ 11  e3038f8c                        multi-session          0.0000   neutral          'How many rare items do I have in total?'
+ 12  60bf93ed_abs                    multi-session          0.0040      HURT          'How many days did it take for my iPad case to arrive after I'
+ 13  gpt4_372c3eed_abs               multi-session          0.0020   neutral          'How many years in total did I spend in formal education from'
+ 14  d24813b1                        single-session-preference   0.0160   neutral          "I'm thinking of inviting my colleagues over for a small gath"
+ 15  75f70248                        single-session-preference   0.0010   neutral          "I've been sneezing quite a bit lately. Do you think it might"
+ 16  1da05512                        single-session-preference   0.0110       WIN          "I'm trying to decide whether to buy a NAS device now or wait"
+ 17  fca70973                        single-session-preference   0.0310   neutral          'I am planning another theme park weekend; do you have any su'
+ 18  a89d7624                        single-session-preference   0.0220   neutral          "I'm planning a trip to Denver soon. Any suggestions on what "
+ 19  6456829e                        multi-session          0.0150   neutral          'How many plants did I initially plant for tomatoes and cucum'
+ 20  a1cc6108                        multi-session          0.0330   neutral          'How old was I when Alex was born?'
+ 21  60159905                        multi-session          0.0120      HURT          'How many dinner parties have I attended in the past month?'
+ 22  c18a7dc8                        multi-session          0.0160   neutral          'How many years older am I than when I graduated from college'
+ 23  87f22b4a                        multi-session          0.0410       WIN          'How much have I made from selling eggs this month?'
+ 24  b46e15ed                        temporal-reasoning     0.0110       WIN          'How many months have passed since I participated in two char'
+ 25  gpt4_8279ba02                   temporal-reasoning     0.0230   neutral          'How many days ago did I buy a smoker?'
+ 26  gpt4_f420262c                   temporal-reasoning     0.0150   neutral     YES  'What is the order of airlines I flew with from earliest to l'
+ 27  gpt4_fa19884d                   temporal-reasoning     0.0010   neutral     YES  'What is the artist that I started to listen to last Friday?'
+ 28  9a707b82                        temporal-reasoning     0.0080   neutral          'I mentioned cooking something for my friend a couple of days'
+ 29  4dfccbf8                        temporal-reasoning     0.0100   neutral          'What did I do with Rachel on the Wednesday two months ago?'
+ 30  gpt4_68e94288                   temporal-reasoning     0.0070   neutral     YES  'What was the social media activity I participated 5 days ago'
+ 31  gpt4_2487a7cb                   temporal-reasoning     0.0040      HURT          "Which event did I attend first, the 'Effective Time Manageme"
+ 32  gpt4_65aabe59                   temporal-reasoning     0.0190   neutral          'Which device did I set up first, the smart thermostat or the'
+ 33  gpt4_2f56ae70                   temporal-reasoning     0.0070   neutral          'Which streaming service did I start using most recently?'
+ 34  6613b389                        temporal-reasoning     0.0090   neutral          'How many months before my anniversary did Rachel get engaged'
+ 35  8c18457d                        temporal-reasoning     0.0050   neutral          'How many days had passed between the day I bought a gift for'
+ 36  c8090214_abs                    temporal-reasoning     0.0020       WIN          'How many days before I bought my iPad did I attend the Holid'
+ 37  ce6d2d27                        knowledge-update       0.0050   neutral          'What day of the week do I take a cocktail-making class?'
+ 38  dad224aa                        knowledge-update       0.0020   neutral          'What time do I wake up on Saturday mornings?'
+ 39  0977f2af                        knowledge-update       0.0030   neutral          'What new kitchen gadget did I invest in before getting the A'
+ 40  6aeb4375_abs                    knowledge-update       0.0010   neutral          'How many Italian restaurants have I tried in my city?'
+
+====================================================================================================
+SUMMARY
+====================================================================================================
+Total near-misses:  40
+
+Turn-pair boost effect:
+  WIN  (only correct has pair, gap overcome by +0.008): 7
+    # 3  gap=0.0110  'How much is the painting of a sunset worth in terms of the amount'
+    # 4  gap=0.0050  'What did my dad gave me as a birthday gift?'
+    # 6  gap=0.0070  'How many babies were born to friends and family members in the la'
+    #16  gap=0.0110  "I'm trying to decide whether to buy a NAS device now or wait. Wha"
+    #23  gap=0.0410  'How much have I made from selling eggs this month?'
+    #24  gap=0.0110  'How many months have passed since I participated in two charity e'
+    #36  gap=0.0020  'How many days before I bought my iPad did I attend the Holiday Ma'
+  HURT (only rank1  has pair, gap grows by +0.008):    4
+    # 5  gap=0.0310  'How many movie festivals that I attended?'
+    #12  gap=0.0040  'How many days did it take for my iPad case to arrive after I boug'
+    #21  gap=0.0120  'How many dinner parties have I attended in the past month?'
+    #31  gap=0.0040  "Which event did I attend first, the 'Effective Time Management' w"
+  neutral:                                              29
+
+  Net expected flips from turn-pair: +3 → R@1 ≈ +0.6pp
+
+Temporal reference date (question_date anchor):
+  Cases with relative date expr AND date mismatch: 3
+    #26  gap=0.0150  r1=2022-11-16  cor=2023-01-28  'What is the order of airlines I flew with from earliest'
+    #27  gap=0.0010  r1=2023-03-18  cor=2023-03-31  'What is the artist that I started to listen to last Fri'
+    #30  gap=0.0070  r1=2023-02-12  cor=2023-03-15  'What was the social media activity I participated 5 day'
+
+Definite wins if BOTH effects work correctly:
+  10 unique questions could flip
+  Theoretical ceiling: 433/500 = 86.6% R@1

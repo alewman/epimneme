@@ -1,0 +1,110 @@
+[
+  {
+    "conversation_id": "test_beam_conv1",
+    "conversation_seed": {
+      "category": "Coding",
+      "title": "Building a Budget Tracker with Python and Flask",
+      "theme": "A developer builds a personal finance web app over several weeks.",
+      "subtopics": ["Flask routes", "SQLite", "user auth", "data visualization"]
+    },
+    "narratives": ["Building core Flask app", "Adding authentication", "Adding analytics"],
+    "user_profile": {
+      "user_info": "Name: Alex, Age: 28, Profession: Software developer",
+      "user_relationships": "Partner: Sam (30), Friend: Jordan (27)"
+    },
+    "conversation_plan": "Plan: Build a budget tracker web app incrementally.",
+    "user_questions": ["How do I set up Flask?", "How do I add user login?"],
+    "chat": [
+      [
+        {"id": 0, "role": "user", "content": "I'm starting a budget tracker project using Python and Flask. The first sprint ends March 29.", "time_anchor": "March-15-2024", "question_type": "main_question"},
+        {"id": 1, "role": "assistant", "content": "Great! For a Flask budget tracker, start by setting up your virtual environment and installing Flask and SQLAlchemy. Your sprint plan should cover user registration, login, and basic expense entry.", "time_anchor": "March-15-2024", "question_type": "main_answer"},
+        {"id": 2, "role": "user", "content": "I want to add user authentication using JWT tokens.", "time_anchor": "March-20-2024", "question_type": "main_question"},
+        {"id": 3, "role": "assistant", "content": "For JWT auth in Flask, use the flask-jwt-extended library. Store user credentials in SQLite and issue tokens on login.", "time_anchor": "March-20-2024", "question_type": "main_answer"},
+        {"id": 4, "role": "user", "content": "I prefer lightweight libraries whenever possible. Please keep that in mind for all future suggestions.", "time_anchor": "March-22-2024", "question_type": "follow_up"},
+        {"id": 5, "role": "assistant", "content": "Noted! I'll prioritize lightweight options for you going forward.", "time_anchor": "March-22-2024", "question_type": "follow_up_answer"},
+        {"id": 6, "role": "user", "content": "The average response time of the dashboard API is currently 500ms.", "time_anchor": "March-25-2024", "question_type": "main_question"},
+        {"id": 7, "role": "assistant", "content": "500ms is a bit slow for a dashboard. Consider adding Redis caching or optimizing your SQL queries.", "time_anchor": "March-25-2024", "question_type": "main_answer"},
+        {"id": 8, "role": "user", "content": "After optimization the average response time of the dashboard API is now 250ms.", "time_anchor": "April-01-2024", "question_type": "main_question"},
+        {"id": 9, "role": "assistant", "content": "250ms is much better! Redis caching is really effective for read-heavy dashboards.", "time_anchor": "April-01-2024", "question_type": "main_answer"},
+        {"id": 10, "role": "user", "content": "I have never used Flask before and this is my first web project.", "time_anchor": "April-05-2024", "question_type": "main_question"},
+        {"id": 11, "role": "assistant", "content": "Welcome to Flask! It's a great framework for beginners.", "time_anchor": "April-05-2024", "question_type": "main_answer"},
+        {"id": 12, "role": "user", "content": "I want to add a new column 'category' to the transactions table.", "time_anchor": "April-10-2024", "question_type": "main_question"},
+        {"id": 13, "role": "assistant", "content": "Use an Alembic migration: `alembic revision --autogenerate -m 'add category column'`.", "time_anchor": "April-10-2024", "question_type": "main_answer"},
+        {"id": 14, "role": "user", "content": "Also add a 'note' column to the transactions table as well.", "time_anchor": "April-12-2024", "question_type": "follow_up"},
+        {"id": 15, "role": "assistant", "content": "Sure, add 'note' as a TEXT column with a second Alembic migration.", "time_anchor": "April-12-2024", "question_type": "follow_up_answer"}
+      ]
+    ],
+    "probing_questions": {
+      "abstention": [
+        {
+          "question": "What specific database index did I create for the user table?",
+          "rubric": ["Based on the provided chat, there is no information related to what specific database index was created for the user table"],
+          "source_chat_ids": null
+        }
+      ],
+      "contradiction_resolution": [
+        {
+          "question": "Have I used Flask before this project?",
+          "rubric": ["LLM response should state: there is contradictory information", "LLM response should mention: this is first Flask project", "LLM response should mention: earlier discussions implied prior experience"],
+          "source_chat_ids": {"first_statement": [10], "second_statement": [0]}
+        }
+      ],
+      "information_extraction": [
+        {
+          "question": "When does my first sprint end?",
+          "rubric": ["LLM response should state: March 29"],
+          "source_chat_ids": [0]
+        }
+      ],
+      "instruction_following": [
+        {
+          "question": "What library should I use for data visualization?",
+          "rubric": ["LLM response should contain: suggests lightweight libraries"],
+          "source_chat_ids": [4, 5]
+        }
+      ],
+      "knowledge_update": [
+        {
+          "question": "What is the average response time of the dashboard API?",
+          "rubric": ["LLM response should state: 250ms"],
+          "source_chat_ids": {"original_info": [6], "updated_info": [8]}
+        }
+      ],
+      "multi_session_reasoning": [
+        {
+          "question": "How many new columns did I want to add to the transactions table across my requests?",
+          "rubric": ["LLM response should state: Two columns", "LLM response should mention: category", "LLM response should mention: note"],
+          "source_chat_ids": [12, 14]
+        }
+      ],
+      "preference_following": [
+        {
+          "question": "I'm planning to add analytics. What charting library should I use?",
+          "rubric": ["LLM response should contain: suggests lightweight libraries"],
+          "source_chat_ids": [4]
+        }
+      ],
+      "summarization": [
+        {
+          "question": "Can you summarize the main development milestones in my budget tracker project?",
+          "rubric": ["LLM response should contain: Flask setup and sprint planning", "LLM response should contain: JWT authentication", "LLM response should contain: API performance optimization"],
+          "source_chat_ids": [0, 2, 6, 8]
+        }
+      ],
+      "temporal_reasoning": [
+        {
+          "question": "How many days are there between the start of my project and the API optimization?",
+          "rubric": ["LLM response should state: 17 days"],
+          "source_chat_ids": {"first_event": [0], "second_event": [8]}
+        }
+      ],
+      "event_ordering": [
+        {
+          "question": "In what order did I tackle the main development tasks?",
+          "rubric": ["Flask setup and sprint planning", "JWT authentication", "Lightweight library preference", "API performance optimization"],
+          "source_chat_ids": [0, 2, 4, 8]
+        }
+      ]
+    }
+  }
+]

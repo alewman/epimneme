@@ -1,0 +1,50 @@
+[
+  {
+    "sample_id": "test_conv1",
+    "conversation": {
+      "session_1": [
+        {"dia_id": "D1:1", "speaker": "Alice", "text": "I just adopted a golden retriever puppy named Max!"},
+        {"dia_id": "D1:2", "speaker": "Bob", "text": "That's amazing! How old is Max?"},
+        {"dia_id": "D1:3", "speaker": "Alice", "text": "He's 3 months old and already loves fetch."}
+      ],
+      "session_1_date_time": "2024-01-10",
+      "session_2": [
+        {"dia_id": "D2:1", "speaker": "Alice", "text": "Max chewed up my favorite shoes today."},
+        {"dia_id": "D2:2", "speaker": "Bob", "text": "Puppies love to chew! Get him some toys."},
+        {"dia_id": "D2:3", "speaker": "Alice", "text": "Good idea, I'll get some chew toys this weekend."}
+      ],
+      "session_2_date_time": "2024-01-15",
+      "session_3": [
+        {"dia_id": "D3:1", "speaker": "Alice", "text": "I started a new job as a software engineer at Google."},
+        {"dia_id": "D3:2", "speaker": "Bob", "text": "Congratulations! What team are you on?"},
+        {"dia_id": "D3:3", "speaker": "Alice", "text": "The cloud infrastructure team. It's exciting!"}
+      ],
+      "session_3_date_time": "2024-01-20"
+    },
+    "session_summary": {
+      "session_1_summary": "Alice adopted a 3-month-old golden retriever puppy named Max who loves fetch.",
+      "session_2_summary": "Max chewed up Alice's shoes. Bob suggested getting chew toys.",
+      "session_3_summary": "Alice started a new software engineering job at Google on the cloud infrastructure team."
+    },
+    "qa": [
+      {
+        "question": "What is the name of Alice's pet?",
+        "answer": "Max",
+        "category": 1,
+        "evidence": ["D1:1"]
+      },
+      {
+        "question": "Where does Alice work?",
+        "answer": "Google",
+        "category": 1,
+        "evidence": ["D3:1"]
+      },
+      {
+        "question": "What happened after Alice got Max?",
+        "answer": "Max chewed up her favorite shoes",
+        "category": 2,
+        "evidence": ["D2:1"]
+      }
+    ]
+  }
+]

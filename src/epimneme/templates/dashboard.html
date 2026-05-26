@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engram</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface-2: #21262d;
+  --border: #30363d; --text: #e6edf3; --text-dim: #8b949e;
+  --accent: #58a6ff; --accent-dim: #388bfd33; --success: #3fb950;
+  --warning: #d29922; --danger: #f85149; --purple: #bc8cff;
+  --radius: 8px; --font: -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  --mono: 'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); line-height:1.5; }
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+
+/* Layout */
+.app { display:flex; min-height:100vh; }
+.sidebar { width:220px; background:var(--surface); border-right:1px solid var(--border); padding:16px 0; flex-shrink:0; display:flex; flex-direction:column; }
+.sidebar .logo { padding:0 16px 16px; font-size:20px; font-weight:700; letter-spacing:-0.5px; display:flex; align-items:center; gap:8px; }
+.sidebar .logo .icon { width:28px; height:28px; border-radius:6px; background:linear-gradient(135deg,var(--accent),var(--purple)); display:flex; align-items:center; justify-content:center; font-size:14px; }
+.sidebar nav { flex:1; }
+.sidebar nav button { width:100%; text-align:left; padding:8px 16px; border:none; background:none; color:var(--text-dim); cursor:pointer; font-size:14px; font-family:var(--font); display:flex; align-items:center; gap:8px; transition:all .15s; }
+.sidebar nav button:hover { background:var(--surface-2); color:var(--text); }
+.sidebar nav button.active { background:var(--accent-dim); color:var(--accent); border-right:2px solid var(--accent); }
+.sidebar .version { padding:16px; font-size:11px; color:var(--text-dim); }
+.main { flex:1; padding:24px 32px; overflow-y:auto; max-height:100vh; }
+
+/* Cards */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; }
+.card h3 { font-size:14px; color:var(--text-dim); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px; }
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+.stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
+.stat .value { font-size:28px; font-weight:700; }
+.stat .label { font-size:12px; color:var(--text-dim); margin-top:2px; }
+
+/* Tables */
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); color:var(--text-dim); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
+td { padding:8px 12px; border-bottom:1px solid var(--border); max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+tr:hover td { background:var(--surface-2); }
+
+/* Badges */
+.badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; }
+.badge-fact { background:#388bfd22; color:var(--accent); }
+.badge-decision { background:#bc8cff22; color:var(--purple); }
+.badge-procedure { background:#3fb95022; color:var(--success); }
+.badge-issue { background:#f8514922; color:var(--danger); }
+.badge-pattern { background:#d2992222; color:var(--warning); }
+.badge-preference { background:#388bfd22; color:#79c0ff; }
+.badge-observation { background:#8b949e22; color:var(--text-dim); }
+
+/* Forms */
+input, textarea, select { background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:8px 12px; font-family:var(--font); font-size:14px; width:100%; }
+input:focus, textarea:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+textarea { resize:vertical; min-height:80px; }
+button.btn { padding:8px 16px; border:none; border-radius:6px; font-size:14px; cursor:pointer; font-family:var(--font); font-weight:500; transition:all .15s; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:#79c0ff; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-danger:hover { opacity:0.85; }
+.btn-sm { padding:4px 10px; font-size:12px; }
+
+/* Search */
+.search-bar { display:flex; gap:8px; margin-bottom:16px; }
+.search-bar input { flex:1; }
+
+/* Misc */
+.empty { text-align:center; padding:40px; color:var(--text-dim); }
+.flex { display:flex; gap:8px; align-items:center; }
+.mb { margin-bottom:16px; }
+.mono { font-family:var(--mono); font-size:13px; }
+h2 { font-size:20px; margin-bottom:16px; }
+.tag { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; background:var(--surface-2); color:var(--text-dim); margin-right:4px; }
+
+/* Activity Stream */
+.activity-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+.activity-bar select { width:auto; min-width:120px; }
+.activity-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.activity-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:12px; cursor:pointer; border:1px solid var(--border); background:var(--surface); transition:all .15s; user-select:none; }
+.activity-chip .acdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.activity-chip.off { opacity:0.4; }
+.activity-chip:hover { border-color:var(--accent); }
+.activity-status { font-size:12px; color:var(--text-dim); margin-left:auto; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.activity-status .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.activity-status .dot-live { background:var(--success); animation:pulse 2s infinite; }
+.activity-status .dot-paused { background:var(--warning); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.activity-stats { display:flex; gap:16px; font-size:12px; color:var(--text-dim); margin-bottom:12px; }
+.activity-stats .rate { color:var(--accent); font-weight:600; }
+.activity-entry { display:flex; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border); transition:background .3s; align-items:flex-start; }
+.activity-entry:hover { background:var(--surface-2); }
+.activity-entry.ae-new { background:var(--accent-dim); }
+.activity-entry .ae-icon { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-top:2px; }
+.activity-entry .ae-body { flex:1; min-width:0; }
+.activity-entry .ae-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.activity-entry .ae-type { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+.activity-entry .ae-time { font-size:11px; color:var(--text-dim); font-family:var(--mono); white-space:nowrap; }
+.activity-entry .ae-summary { font-size:13px; margin-top:2px; line-height:1.5; }
+.activity-entry .ae-detail { font-size:12px; color:var(--text-dim); margin-top:4px; font-family:var(--mono); max-height:60px; overflow:hidden; text-overflow:ellipsis; }
+.activity-entry .ae-meta { font-size:11px; color:var(--text-dim); margin-top:2px; display:flex; gap:8px; }
+.activity-stream { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); max-height:calc(100vh - 260px); overflow-y:auto; }
+
+/* Toast */
+.toast { position:fixed; bottom:20px; right:20px; padding:12px 20px; border-radius:var(--radius); color:#fff; font-size:14px; z-index:9999; animation:slideIn .3s; }
+.toast-ok { background:var(--success); }
+.toast-err { background:var(--danger); }
+@keyframes slideIn { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+/* Modal */
+.modal-bg { position:fixed; top:0; left:0; width:100%; height:100%; background:#0008; display:flex; align-items:center; justify-content:center; z-index:1000; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:500px; max-width:90vw; max-height:80vh; overflow-y:auto; }
+.modal h3 { margin-bottom:16px; }
+.form-row { margin-bottom:12px; }
+.form-row label { display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px; }
+
+/* Graph */
+#graph-svg { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); }
+#graph-svg text { fill:var(--text); font-size:10px; pointer-events:none; }
+.graph-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+.graph-controls select, .graph-controls input { width:auto; min-width:120px; }
+.graph-legend { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; font-size:12px; }
+.graph-legend .swatch { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+.graph-stats { display:flex; gap:16px; font-size:13px; color:var(--text-dim); margin-bottom:12px; }
+
+/* Graph heat map */
+.heat-toggle { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; user-select:none; }
+.heat-toggle input[type=checkbox] { width:auto; accent-color:var(--accent); }
+.heat-legend-bar { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); margin-bottom:12px; }
+.heat-gradient { width:120px; height:10px; border-radius:5px; background:linear-gradient(to right, #1e3a5f, #58a6ff, #d29922, #f85149); }
+@keyframes glow-pulse { 0%,100% { filter: drop-shadow(0 0 4px currentColor); } 50% { filter: drop-shadow(0 0 12px currentColor); } }
+
+/* Reflection */
+.refl-cluster { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+.refl-cluster .refl-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.refl-cluster .refl-items { font-size:13px; color:var(--text-dim); line-height:1.8; }
+.refl-run-log { max-height:300px; overflow-y:auto; font-size:13px; font-family:var(--mono); background:var(--surface-2); border-radius:var(--radius); padding:12px; line-height:1.7; }
+
+/* Mobile hamburger */
+.menu-toggle { display:none; position:fixed; top:12px; left:12px; z-index:1100; width:40px; height:40px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font-size:20px; cursor:pointer; align-items:center; justify-content:center; }
+.sidebar-backdrop { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#000a; z-index:999; }
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .menu-toggle { display:flex; }
+  .sidebar { position:fixed; top:0; left:0; height:100vh; z-index:1000; transform:translateX(-100%); transition:transform .25s ease; }
+  .sidebar.open { transform:translateX(0); }
+  .sidebar-backdrop.open { display:block; }
+  .main { padding:16px 12px; padding-top:56px; max-height:100vh; }
+  .stat-grid { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
+  .stat .value { font-size:22px; }
+  .search-bar { flex-direction:column; }
+  .search-bar input, .search-bar select, .search-bar button { width:100%; }
+  .log-controls { flex-direction:column; align-items:stretch; }
+  .log-controls select, .log-controls input { width:100%; min-width:0; }
+  .log-status { margin-left:0; margin-top:4px; }
+  .activity-bar { flex-direction:column; align-items:stretch; }
+  .activity-chips { flex-wrap:wrap; }
+  .activity-status { margin-left:0; margin-top:4px; }
+  .graph-controls { flex-direction:column; align-items:stretch; }
+  .graph-controls select, .graph-controls input { width:100%; min-width:0; }
+  table { font-size:12px; display:block; overflow-x:auto; white-space:nowrap; }
+  td, th { padding:6px 8px; }
+  .modal { width:95vw; max-width:95vw; padding:16px; }
+  h2 { font-size:18px; }
+  .card { padding:12px; }
+  /* Diagnostics 2-col → 1-col */
+  div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns:1fr !important; }
+}
+</style>
+</head>
+<body>
+<button class="menu-toggle" id="menu-toggle">&#x2630;</button>
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="logo"><div class="icon">&#x2728;</div> Engram</div>
+    <nav>
+      <button data-tab="overview" class="active">&#x1F4CA; Overview</button>
+      <button data-tab="memories">&#x1F9E0; Memories</button>
+      <button data-tab="entities">&#x1F517; Entities</button>
+      <button data-tab="graph">&#x1F578;&#xFE0F; Graph</button>
+      <button data-tab="sessions">&#x1F4C5; Sessions</button>
+      <button data-tab="reflection">&#x1F52E; Reflection</button>
+      <button data-tab="keys">&#x1F511; API Keys</button>
+      <button data-tab="backups">&#x1F4BE; Backups</button>
+      <button data-tab="logger">&#x26A1; Activity</button>
+      <button data-tab="diagnostics">&#x1F6E0;&#xFE0F; Diagnostics</button>
+    </nav>
+    <div class="version" id="version-label">Engram</div>
+  </aside>
+  <main class="main" id="content"></main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+const API = '';
+
+async function api(path, opts={}) {
+  const r = await fetch(API + path, {
+    headers: {'Content-Type':'application/json', ...opts.headers},
+    ...opts,
+  });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function toast(msg, ok=true) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function $(sel) { return document.querySelector(sel); }
+function html(el, h) { el.innerHTML = h; }
+function badge(kind) { return `<span class="badge badge-${kind}">${kind}</span>`; }
+function ago(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const s = Math.floor((Date.now() - d) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+function truncate(s, n=120) { return s && s.length > n ? s.slice(0,n) + '…' : (s||''); }
+function jsonAttr(obj) { return JSON.stringify(JSON.stringify(obj)).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function escapeHtml(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── State ──
+let currentTab = 'overview';
+window._pendingFilter = null;
+function goTab(tab, opts={}) {
+  currentTab = tab;
+  document.querySelectorAll('.sidebar nav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  _closeSidebar();
+  window._pendingFilter = opts;
+  renderTab();
+}
+
+async function togglePersistent(projectName, enabled) {
+  try {
+    const method = enabled ? 'POST' : 'DELETE';
+    await api(`/api/projects/${encodeURIComponent(projectName)}/persistent`, { method });
+  } catch(e) {
+    alert('Failed to update persistent setting: ' + (e.message || e));
+    goTab('overview');
+  }
+}
+
+// ── Mobile menu toggle ──
+const _menuToggle = document.getElementById('menu-toggle');
+const _sidebar = document.getElementById('sidebar');
+const _backdrop = document.getElementById('sidebar-backdrop');
+function _closeSidebar() { _sidebar.classList.remove('open'); _backdrop.classList.remove('open'); }
+function _openSidebar() { _sidebar.classList.add('open'); _backdrop.classList.add('open'); }
+_menuToggle.addEventListener('click', () => _sidebar.classList.contains('open') ? _closeSidebar() : _openSidebar());
+_backdrop.addEventListener('click', _closeSidebar);
+
+// ── Navigation ──
+document.querySelectorAll('.sidebar nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    _closeSidebar();
+    renderTab();
+  });
+});
+
+// ── Render ──
+async function renderTab() {
+  const c = $('#content');
+  try {
+    switch(currentTab) {
+      case 'overview': await renderOverview(c); break;
+      case 'memories': await renderMemories(c); break;
+      case 'entities': await renderEntities(c); break;
+      case 'graph': await renderGraph(c); break;
+      case 'sessions': await renderSessions(c); break;
+      case 'keys': await renderKeys(c); break;
+      case 'backups': await renderBackups(c); break;
+      case 'logger': await renderLogger(c); break;
+      case 'diagnostics': await renderDiagnostics(c); break;
+      case 'reflection': await renderReflection(c); break;
+    }
+  } catch(e) {
+    html(c, `<div class="empty">Error: ${e.message}</div>`);
+  }
+}
+
+// ── Overview ──
+async function renderOverview(c) {
+  const [stats, health, projResp] = await Promise.all([api('/api/stats'), api('/health'), api('/api/projects')]);
+  const projects = stats.projects || [];
+  const projectDetails = (projResp.projects || []);
+  $('#version-label').textContent = `Engram v${health.version || '?'}`;
+
+  let detailed = {};
+  try { detailed = await api('/api/stats/detailed'); } catch(e) {}
+
+  html(c, `
+    <h2>Overview</h2>
+    <div class="stat-grid">
+      <div class="stat" style="cursor:pointer" onclick="goTab('memories')"><div class="value">${stats.total_memories || 0}</div><div class="label">Memories</div></div>
+      <div class="stat"><div class="value">${stats.total_vectors || 0}</div><div class="label">Vectors</div></div>
+      <div class="stat" style="cursor:pointer" onclick="goTab('entities')"><div class="value">${stats.total_entities || 0}</div><div class="label">Entities</div></div>
+      <div class="stat" style="cursor:pointer" onclick="goTab('sessions')"><div class="value">${projects.length}</div><div class="label">Projects</div></div>
+    </div>
+    <div class="card">
+      <h3>Projects</h3>
+      ${projectDetails.length ? projectDetails.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+          <a href="#" style="color:var(--accent)" onclick="goTab('memories',{query:'project:${escapeHtml(p.name)}'});return false">${escapeHtml(p.name)}</a>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer" title="When enabled, memories never fade">
+            <input type="checkbox" ${p.persistent_memories ? 'checked' : ''} onchange="togglePersistent('${escapeHtml(p.name)}', this.checked)">
+            \u{1F512} Persistent
+          </label>
+        </div>`).join('') : '<div class="empty">No projects yet</div>'}
+    </div>
+    ${detailed.memories_by_kind ? `<div class="card"><h3>Memories by Kind</h3>
+      ${Object.entries(detailed.memories_by_kind).map(([k,v]) => `<div class="flex" style="padding:2px 0;cursor:pointer" onclick="goTab('memories',{query:'kind:${k}'})">${badge(k)} <span>${v}</span></div>`).join('')}
+    </div>` : ''}
+    ${detailed.recent_sessions ? `<div class="card"><h3>Recent Sessions</h3>
+      <table><tr><th>Task</th><th>Project</th><th>Started</th><th>Summary</th></tr>
+      ${detailed.recent_sessions.map(s => `<tr>
+        <td>${truncate(s.task||'—',40)}</td>
+        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" onclick="event.preventDefault();goTab('entities',{project:'${s.project_name}'})">${s.project_name}</a>` : '—'}</td>
+        <td>${ago(s.started_at)}</td>
+        <td>${truncate(s.summary||'—',60)}</td>
+      </tr>`).join('')}
+      </table>
+    </div>` : ''}
+    <div class="card"><h3>System</h3>
+      <div>Embeddings: <strong>${stats.embeddings_enabled ? 'Enabled' : 'Disabled'}</strong></div>
+      <div>Status: <strong style="color:var(--success)">${health.status}</strong></div>
+    </div>
+  `);
+}
+
+// ── Memories ──
+let memorySearchQuery = '';
+async function renderMemories(c) {
+  html(c, `
+    <h2>Memories</h2>
+    <div class="search-bar">
+      <input id="mem-search" placeholder="Search memories…" value="${memorySearchQuery}">
+      <button class="btn btn-primary" id="mem-search-btn">Search</button>
+      <button class="btn btn-primary" id="mem-add-btn">+ New</button>
+    </div>
+    <div id="mem-results"><div class="empty">Enter a search query to find memories</div></div>
+  `);
+  const searchBtn = $('#mem-search-btn');
+  const addBtn = $('#mem-add-btn');
+  const input = $('#mem-search');
+  input.focus();
+
+  // Auto-search if navigated with a filter
+  if (window._pendingFilter && window._pendingFilter.query) {
+    input.value = window._pendingFilter.query;
+    memorySearchQuery = window._pendingFilter.query;
+    window._pendingFilter = null;
+  }
+
+  const doSearch = async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    memorySearchQuery = q;
+    const res = await api(`/api/memories/search?query=${encodeURIComponent(q)}&limit=50`);
+    const el = $('#mem-results');
+    if (!res.results || !res.results.length) {
+      html(el, '<div class="empty">No results</div>');
+      return;
+    }
+    html(el, `<table><tr><th>Kind</th><th>Content</th><th>Subject</th><th>Score</th><th>Ver</th><th>Actions</th></tr>
+      ${res.results.map(r => `<tr${r.pinned ? ' style="background:rgba(255,200,50,0.08)"' : ''}>
+        <td>${r.pinned ? '&#x1F4CC; ' : ''}${badge(r.kind)}</td>
+        <td style="cursor:pointer" onclick="viewMemory(${jsonAttr(r)})" title="Click to view">${truncate(r.content,80)}</td>
+        <td>${r.subject||'—'}</td>
+        <td>${r.score}</td>
+        <td>${r.version > 1 ? `<a href="#" onclick="event.preventDefault();viewVersions('${r.version_of||r.id}')">v${r.version||1}</a>` : `v${r.version||1}`}</td>
+        <td class="flex">
+          <button class="btn btn-sm" style="background:${r.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:11px" onclick="togglePin('${r.id}',${!r.pinned})" title="${r.pinned ? 'Unpin' : 'Pin'}">${r.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
+          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="editMemory(${jsonAttr(r)})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="forgetMemory('${r.id}')">Forget</button>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:10px" onclick="hardForgetMemory('${r.id}')" title="Permanently delete from database">&times;</button>
+        </td>
+      </tr>`).join('')}
+    </table>`);
+  };
+  searchBtn.onclick = doSearch;
+  input.onkeydown = e => { if (e.key === 'Enter') doSearch(); };
+  addBtn.onclick = () => showAddMemoryModal();
+
+  // Auto-trigger if query was pre-filled
+  if (memorySearchQuery) doSearch();
+}
+
+function showAddMemoryModal() {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>Store Memory</h3>
+    <div class="form-row"><label>Content</label><textarea id="nm-content" rows="3"></textarea></div>
+    <div class="form-row"><label>Kind</label><select id="nm-kind">
+      <option>fact</option><option>decision</option><option>procedure</option>
+      <option>pattern</option><option>preference</option><option>observation</option><option>issue</option>
+    </select></div>
+    <div class="form-row"><label>Project</label><input id="nm-project" placeholder="optional"></div>
+    <div class="form-row"><label>Subject</label><input id="nm-subject" placeholder="optional"></div>
+    <div class="form-row"><label>Tags (comma-separated)</label><input id="nm-tags" placeholder="optional"></div>
+    <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" id="nm-cancel" style="background:var(--surface-2)">Cancel</button>
+      <button class="btn btn-primary" id="nm-save">Store</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#nm-cancel').onclick = () => bg.remove();
+  bg.querySelector('#nm-save').onclick = async () => {
+    const body = {
+      content: bg.querySelector('#nm-content').value,
+      kind: bg.querySelector('#nm-kind').value,
+      project: bg.querySelector('#nm-project').value || undefined,
+      subject: bg.querySelector('#nm-subject').value || undefined,
+      tags: bg.querySelector('#nm-tags').value ? bg.querySelector('#nm-tags').value.split(',').map(t=>t.trim()) : [],
+    };
+    try {
+      await api('/api/memories', {method:'POST', body:JSON.stringify(body)});
+      toast('Memory stored');
+      bg.remove();
+    } catch(e) { toast(e.message, false); }
+  };
+}
+
+window.forgetMemory = async function(id) {
+  const choice = confirm('Mark this memory as obsolete?\n\nClick OK to soft-forget (mark obsolete).\nTo permanently delete, hold Shift and click the Forget button instead.');
+  if (!choice) return;
+  try {
+    await api(`/api/memories/${id}?reason=forgotten+via+dashboard`, {method:'DELETE'});
+    toast('Memory marked obsolete');
+    renderTab();
+  } catch(e) { toast(e.message, false); }
+};
+
+window.hardForgetMemory = async function(id) {
+  if (!confirm('PERMANENTLY DELETE this memory?\n\nThis cannot be undone. The memory and all its entity links will be erased from the database.')) return;
+  try {
+    await api(`/api/memories/${id}?reason=hard+delete+via+dashboard&hard=true`, {method:'DELETE'});
+    toast('Memory permanently deleted');
+    renderTab();
+  } catch(e) { toast(e.message, false); }
+};
+
+window.togglePin = async function(id, pin) {
+  try {
+    const action = pin ? 'pin' : 'unpin';
+    await api(`/api/memories/${id}/${action}`, {method:'POST'});
+    toast(pin ? 'Memory pinned — it will always appear in context and never be garbage-collected' : 'Memory unpinned');
+    renderTab();
+  } catch(e) { toast(e.message, false); }
+};
+
+window.editMemory = function(memJson) {
+  const m = JSON.parse(memJson);
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>Edit Memory</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px">${badge(m.kind)} <span class="mono" style="font-size:11px;color:var(--text-dim)">${m.id.slice(0,12)}… v${m.version||1}</span></div>
+    <div class="form-row"><label>Content</label><textarea id="em-content" rows="5">${(m.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea></div>
+    <div class="form-row"><label>Subject</label><input id="em-subject" value="${(m.subject||'').replace(/"/g,'&quot;')}"></div>
+    <div class="form-row"><label>Tags (comma-separated)</label><input id="em-tags" value="${(m.tags||[]).join(', ')}"></div>
+    <div class="form-row"><label>Confidence (0-1)</label><input id="em-confidence" type="number" min="0" max="1" step="0.1" value="${m.confidence ?? ''}"></div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Editing creates a new version (old version is preserved)</div>
+    <div class="flex" style="justify-content:flex-end;gap:8px">
+      <button class="btn" id="em-cancel" style="background:var(--surface-2)">Cancel</button>
+      <button class="btn btn-primary" id="em-save">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#em-cancel').onclick = () => bg.remove();
+  bg.querySelector('#em-save').onclick = async () => {
+    const body = {
+      content: bg.querySelector('#em-content').value,
+      subject: bg.querySelector('#em-subject').value || null,
+      tags: bg.querySelector('#em-tags').value ? bg.querySelector('#em-tags').value.split(',').map(t=>t.trim()) : [],
+      confidence: bg.querySelector('#em-confidence').value ? parseFloat(bg.querySelector('#em-confidence').value) : null,
+    };
+    try {
+      const res = await api(`/api/memories/${m.id}`, {method:'PUT', body:JSON.stringify(body)});
+      toast(`Updated → v${res.version}`);
+      bg.remove();
+      renderTab();
+    } catch(e) { toast(e.message, false); }
+  };
+};
+
+window.viewMemory = function(memJson) {
+  const m = JSON.parse(memJson);
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>${m.subject || 'Memory Detail'}</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      ${badge(m.kind)}
+      ${m.pinned ? '<span class="tag" style="color:#e6a817;border-color:#e6a817">&#x1F4CC; Pinned</span>' : ''}
+      ${(m.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}
+      ${m.version > 1 ? `<span class="tag" style="color:var(--purple)">v${m.version}</span>` : ''}
+    </div>
+    <div class="mono" style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${m.id}</div>
+    <div style="padding:12px;background:var(--surface-2);border-radius:var(--radius);white-space:pre-wrap;font-size:13px;line-height:1.7;max-height:400px;overflow-y:auto">${(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+    ${m.score ? `<div style="margin-top:8px;font-size:12px;color:var(--text-dim)">Relevance: ${m.score}</div>` : ''}
+    <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" style="background:${m.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:12px" onclick="this.closest('.modal-bg').remove();togglePin('${m.id}',${!m.pinned})">${m.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
+      <button class="btn" style="background:var(--surface-2)" onclick="this.closest('.modal-bg').remove();editMemory(${jsonAttr(m)})">Edit</button>
+      <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.onclick = e => { if (e.target === bg) bg.remove(); };
+};
+
+window.viewVersions = async function(rootId) {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal"><h3>Version History</h3><div class="empty">Loading…</div></div>`;
+  document.body.appendChild(bg);
+  bg.onclick = e => { if (e.target === bg) bg.remove(); };
+  try {
+    const data = await api(`/api/memories/${rootId}/versions`);
+    const versions = data.versions || [];
+    bg.querySelector('.modal').innerHTML = `
+      <h3>Version History <span style="font-size:13px;color:var(--text-dim)">(${versions.length} versions)</span></h3>
+      ${versions.length ? versions.map(v => `
+        <div class="card" style="margin-bottom:8px">
+          <div class="flex" style="justify-content:space-between;margin-bottom:4px">
+            <span>v${v.version} ${badge(v.kind)}</span>
+            <span style="font-size:11px;color:var(--text-dim)">${ago(v.created_at)}</span>
+          </div>
+          ${v.subject ? `<div style="font-weight:600;color:var(--accent);font-size:13px;margin-bottom:4px">${v.subject}</div>` : ''}
+          <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:150px;overflow:hidden">${(v.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+        </div>
+      `).join('') : '<div class="empty">No versions found</div>'}
+      <div class="flex" style="justify-content:flex-end;margin-top:12px">
+        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+      </div>`;
+  } catch(e) {
+    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${e.message}</p>
+      <div class="flex" style="justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+      </div>`;
+  }
+};
+
+// ── Entities ──
+async function renderEntities(c) {
+  const projects = (await api('/api/projects')).projects || [];
+
+  html(c, `
+    <h2>Entities</h2>
+    <div class="search-bar">
+      <select id="ent-project" style="width:200px">
+        <option value="">All projects</option>
+        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+      </select>
+      <select id="ent-kind" style="width:150px">
+        <option value="">All kinds</option>
+        <option>project</option><option>file</option><option>module</option>
+        <option>concept</option><option>tool</option><option>person</option>
+        <option>library</option><option>config</option><option>command</option>
+      </select>
+      <input id="ent-search" placeholder="Filter by name…">
+      <button class="btn btn-primary" id="ent-load-btn">Load</button>
+      <button class="btn btn-primary" id="ent-add-btn">+ Track</button>
+    </div>
+    <div id="ent-results"><div class="empty">Click Load to list entities</div></div>
+  `);
+
+  const load = async () => {
+    const sel = $('#ent-project').value;
+    const kind = $('#ent-kind').value;
+    const q = $('#ent-search').value.trim().toLowerCase();
+    const el = $('#ent-results');
+    html(el, '<div class="empty">Loading…</div>');
+
+    let url = '/api/entities?limit=200';
+    if (sel) url += '&project=' + encodeURIComponent(sel);
+    if (kind) url += '&kind=' + encodeURIComponent(kind);
+
+    try {
+      const data = await api(url);
+      let entities = data.entities || [];
+      if (q) entities = entities.filter(e => e.name.toLowerCase().includes(q));
+
+      if (!entities.length) {
+        html(el, '<div class="empty">No entities found</div>');
+        return;
+      }
+      html(el, `<div style="margin-bottom:8px;color:var(--text-dim);font-size:13px">${entities.length} entities</div>
+        <table><tr><th>Name</th><th>Kind</th><th>Properties</th><th>Created</th><th>Actions</th></tr>
+        ${entities.map(e => `<tr>
+          <td><strong>${e.name}</strong></td>
+          <td>${badge(e.kind)}</td>
+          <td class="mono" style="font-size:11px">${truncate(JSON.stringify(e.properties||{}),50)}</td>
+          <td>${ago(e.created_at)}</td>
+          <td><button class="btn btn-sm" style="background:var(--surface-2)" onclick="exploreEntity('${e.name.replace(/'/g,"\\'")}')">Explore</button></td>
+        </tr>`).join('')}
+      </table>`);
+    } catch(e) {
+      html(el, `<div class="empty">Error: ${e.message}</div>`);
+    }
+  };
+
+  $('#ent-load-btn').onclick = load;
+  $('#ent-project').onchange = load;
+  $('#ent-kind').onchange = load;
+  $('#ent-search').onkeydown = e => { if (e.key === 'Enter') load(); };
+
+  // Apply pending filter (e.g. from Overview cross-link)
+  if (window._pendingFilter) {
+    if (window._pendingFilter.project) $('#ent-project').value = window._pendingFilter.project;
+    if (window._pendingFilter.kind) $('#ent-kind').value = window._pendingFilter.kind;
+    if (window._pendingFilter.name) $('#ent-search').value = window._pendingFilter.name;
+    window._pendingFilter = null;
+  }
+
+  // Auto-load on tab switch
+  load();
+
+  $('#ent-add-btn').onclick = () => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal">
+      <h3>Track Entity</h3>
+      <div class="form-row"><label>Name</label><input id="ne-name"></div>
+      <div class="form-row"><label>Kind</label><select id="ne-kind">
+        <option>concept</option><option>file</option><option>module</option>
+        <option>tool</option><option>library</option><option>person</option>
+        <option>config</option><option>command</option><option>project</option>
+      </select></div>
+      <div class="form-row"><label>Project</label><input id="ne-project" placeholder="optional"></div>
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn" id="ne-cancel" style="background:var(--surface-2)">Cancel</button>
+        <button class="btn btn-primary" id="ne-save">Track</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('#ne-cancel').onclick = () => bg.remove();
+    bg.querySelector('#ne-save').onclick = async () => {
+      try {
+        await api('/api/entities', {method:'POST', body:JSON.stringify({
+          name: bg.querySelector('#ne-name').value,
+          kind: bg.querySelector('#ne-kind').value,
+          project: bg.querySelector('#ne-project').value || undefined,
+        })});
+        toast('Entity tracked');
+        bg.remove();
+        load();
+      } catch(e) { toast(e.message, false); }
+    };
+  };
+}
+
+window.exploreEntity = async function(name) {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal"><h3>Exploring "${name}"…</h3><div class="empty">Loading…</div></div>`;
+  document.body.appendChild(bg);
+  bg.onclick = e => { if (e.target === bg) bg.remove(); };
+
+  try {
+    const data = await api(`/api/entities/${encodeURIComponent(name)}/explore?depth=2`);
+    const conns = data.connections || [];
+    bg.querySelector('.modal').innerHTML = `
+      <h3>Entity: ${name}</h3>
+      ${conns.length ? `<table><tr><th>Connected Entity</th><th>Kind</th><th>Relationships</th></tr>
+        ${conns.map(c => `<tr>
+          <td><strong>${c.entity.name}</strong></td>
+          <td>${badge(c.entity.kind)}</td>
+          <td>${c.relationships.map(r => `<span class="tag">${r.relation} → ${r.to}</span>`).join(' ')}</td>
+        </tr>`).join('')}
+      </table>` : '<div class="empty">No connections found</div>'}
+      <div class="flex" style="justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+      </div>`;
+  } catch(e) {
+    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${e.message}</p>
+      <div class="flex" style="justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+      </div>`;
+  }
+};
+
+// ── Graph ──
+const KIND_COLORS = {
+  project:'#58a6ff', module:'#bc8cff', file:'#3fb950', concept:'#d29922',
+  tool:'#f85149', library:'#79c0ff', config:'#8b949e', command:'#f0883e',
+  fact:'#58a6ff', decision:'#bc8cff', procedure:'#3fb950', issue:'#f85149',
+  pattern:'#d29922', preference:'#79c0ff', observation:'#8b949e', similar:'#58a6ff',
+};
+
+let graphSim = null; // keep reference so we can stop it on tab switch
+
+async function renderGraph(c) {
+  // Stop any previous simulation
+  if (graphSim) { graphSim.stop(); graphSim = null; }
+
+  const projects = (await api('/api/projects')).projects || [];
+
+  html(c, `
+    <h2>Knowledge Graph</h2>
+    <div class="graph-controls">
+      <select id="g-mode">
+        <option value="entities" selected>Entity Relationships</option>
+        <option value="similarity">Memory Similarity</option>
+      </select>
+      <select id="g-project" style="width:200px">
+        <option value="">All projects</option>
+        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+      </select>
+      <label style="font-size:13px">Nodes:</label>
+      <input id="g-limit" type="number" value="200" min="10" max="1000" style="width:80px">
+      <span id="g-threshold-wrap" style="display:none">
+        <label style="font-size:13px">Sim &ge;</label>
+        <input id="g-threshold" type="number" value="0.75" min="0.5" max="0.99" step="0.05" style="width:80px">
+      </span>
+      <label class="heat-toggle" id="g-heat-toggle">
+        <input type="checkbox" id="g-heat-cb"> Heat map
+      </label>
+      <button class="btn btn-primary" id="g-load">Load</button>
+    </div>
+    <div id="g-heat-legend" class="heat-legend-bar" style="display:none">
+      <span>Cold</span><div class="heat-gradient"></div><span>Hot</span>
+      <span style="margin-left:12px">· Size = access count · Glow = accessed &lt;5 min ago</span>
+    </div>
+    <div id="g-legend" class="graph-legend"></div>
+    <div id="g-stats" class="graph-stats"></div>
+    <div id="g-container" style="position:relative"></div>
+  `);
+
+  const modeEl = $('#g-mode');
+  const threshWrap = $('#g-threshold-wrap');
+  const heatCb = $('#g-heat-cb');
+  const heatLegend = $('#g-heat-legend');
+  modeEl.onchange = () => { threshWrap.style.display = modeEl.value === 'similarity' ? '' : 'none'; };
+  heatCb.onchange = () => { heatLegend.style.display = heatCb.checked ? '' : 'none'; loadGraph(); };
+
+  // Heat map color scale: maps recency (0=old, 1=very recent) to color
+  function heatColor(recency) {
+    // cold blue → accent blue → warm yellow → hot red
+    if (recency <= 0) return '#1e3a5f';
+    if (recency < 0.33) return d3.interpolateRgb('#1e3a5f', '#58a6ff')(recency / 0.33);
+    if (recency < 0.66) return d3.interpolateRgb('#58a6ff', '#d29922')((recency - 0.33) / 0.33);
+    return d3.interpolateRgb('#d29922', '#f85149')((recency - 0.66) / 0.34);
+  }
+
+  // Calculate recency score (0-1) based on last_accessed timestamp
+  function calcRecency(lastAccessed) {
+    if (!lastAccessed) return 0;
+    const accessedAt = new Date(lastAccessed).getTime();
+    const now = Date.now();
+    const age = now - accessedAt;
+    const oneDay = 86400000;
+    // Scale: 0-5 min = 1.0, 5min-1h = 0.8-0.5, 1h-24h = 0.5-0.2, >24h = 0.2-0
+    if (age < 300000) return 1.0;  // < 5 min
+    if (age < 3600000) return 0.5 + 0.5 * (1 - (age - 300000) / 3300000); // 5min-1h
+    if (age < oneDay) return 0.2 + 0.3 * (1 - (age - 3600000) / (oneDay - 3600000)); // 1h-24h
+    if (age < 7 * oneDay) return 0.05 + 0.15 * (1 - (age - oneDay) / (6 * oneDay)); // 1-7 days
+    return 0.02; // > 7 days
+  }
+
+  async function loadGraph() {
+    const mode = modeEl.value;
+    const proj = $('#g-project').value;
+    const limit = parseInt($('#g-limit').value) || 200;
+    const container = $('#g-container');
+    html(container, '<div class="empty">Loading graph data…</div>');
+
+    let url;
+    if (mode === 'entities') {
+      url = `/api/graph/entities?limit=${limit}`;
+    } else {
+      const thresh = parseFloat($('#g-threshold').value) || 0.75;
+      url = `/api/graph/similarity?limit=${limit}&threshold=${thresh}`;
+    }
+    if (proj) url += `&project=${encodeURIComponent(proj)}`;
+
+    try {
+      const data = await api(url);
+      const {nodes, edges, stats} = data;
+
+      if (!nodes.length) {
+        html(container, '<div class="empty">No graph data found for this selection</div>');
+        return;
+      }
+
+      // Legend
+      const kinds = {};
+      nodes.forEach(n => { kinds[n.kind] = (kinds[n.kind]||0) + 1; });
+      $('#g-legend').innerHTML = Object.entries(kinds).map(([k,v]) =>
+        `<span><span class="swatch" style="background:${KIND_COLORS[k]||'#8b949e'}"></span>${k} (${v})</span>`
+      ).join('');
+
+      // Stats
+      const statsTexts = [`${stats.total_nodes} nodes`, `${stats.total_edges} edges`];
+      if (stats.relations) {
+        const top3 = Object.entries(stats.relations).sort((a,b)=>b[1]-a[1]).slice(0,3);
+        statsTexts.push('Top: ' + top3.map(([r,c])=>`${r}(${c})`).join(', '));
+      }
+      if (stats.threshold) statsTexts.push(`threshold: ${stats.threshold}`);
+      $('#g-stats').textContent = statsTexts.join('  ·  ');
+
+      // D3 Force Graph
+      const width = container.clientWidth || 900;
+      const height = Math.max(500, window.innerHeight - 280);
+      html(container, '');
+
+      const svg = d3.select(container).append('svg')
+        .attr('id', 'graph-svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height]);
+
+      // Zoom
+      const g = svg.append('g');
+      svg.call(d3.zoom().scaleExtent([0.1, 8]).on('zoom', (e) => g.attr('transform', e.transform)));
+
+      const useHeat = heatCb.checked;
+
+      // Defs: arrow markers + glow filter
+      const defs = svg.append('defs');
+
+      // Arrow markers for directed edges
+      defs.selectAll('marker')
+        .data(['arrow'])
+        .join('marker')
+          .attr('id', 'arrow')
+          .attr('viewBox', '0 -5 10 10')
+          .attr('refX', 20)
+          .attr('refY', 0)
+          .attr('markerWidth', 6)
+          .attr('markerHeight', 6)
+          .attr('orient', 'auto')
+        .append('path')
+          .attr('fill', '#30363d')
+          .attr('d', 'M0,-5L10,0L0,5');
+
+      // Glow filter for heat map
+      if (useHeat) {
+        const glowFilter = defs.append('filter')
+          .attr('id', 'glow')
+          .attr('x', '-50%').attr('y', '-50%')
+          .attr('width', '200%').attr('height', '200%');
+        glowFilter.append('feGaussianBlur')
+          .attr('stdDeviation', '4')
+          .attr('result', 'coloredBlur');
+        const feMerge = glowFilter.append('feMerge');
+        feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+        feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+      }
+
+      // Compute heat data for each node
+      if (useHeat) {
+        nodes.forEach(n => {
+          n._recency = calcRecency(n.last_accessed);
+          n._heatColor = heatColor(n._recency);
+          n._accessCount = n.access_count || 0;
+          n._isHot = n._recency >= 0.8;  // accessed in last ~5 min
+        });
+      }
+
+      // Build D3 data
+      const nodeMap = new Map(nodes.map(n => [n.id, {...n}]));
+      const links = edges.filter(e => nodeMap.has(e.source) && nodeMap.has(e.target)).map(e => ({
+        source: e.source,
+        target: e.target,
+        relation: e.relation,
+        similarity: e.similarity,
+      }));
+      const d3nodes = Array.from(nodeMap.values());
+
+      // Simulation
+      if (graphSim) graphSim.stop();
+      graphSim = d3.forceSimulation(d3nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(mode === 'similarity' ? 80 : 60))
+        .force('charge', d3.forceManyBody().strength(mode === 'similarity' ? -100 : -150))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(d => Math.max(8, (d.weight||0) * 2 + 6)));
+
+      // Edges
+      const link = g.append('g')
+        .selectAll('line')
+        .data(links)
+        .join('line')
+          .attr('stroke', d => d.similarity ? `rgba(88,166,255,${Math.max(0.2,d.similarity)})` : '#30363d')
+          .attr('stroke-width', d => d.similarity ? Math.max(0.5, d.similarity * 3) : 1)
+          .attr('marker-end', mode === 'entities' ? 'url(#arrow)' : null);
+
+      // Edge labels (only for entity mode with few edges)
+      let edgeLabel;
+      if (mode === 'entities' && links.length < 200) {
+        edgeLabel = g.append('g')
+          .selectAll('text')
+          .data(links)
+          .join('text')
+            .text(d => d.relation)
+            .attr('font-size', '8px')
+            .attr('fill', '#8b949e')
+            .attr('text-anchor', 'middle');
+      }
+
+      // Nodes
+      const maxAccess = useHeat ? Math.max(1, ...d3nodes.map(d => d._accessCount || 0)) : 1;
+      const node = g.append('g')
+        .selectAll('circle')
+        .data(d3nodes)
+        .join('circle')
+          .attr('r', d => {
+            if (useHeat) {
+              const base = 5;
+              const accessScale = maxAccess > 0 ? (d._accessCount || 0) / maxAccess : 0;
+              return base + accessScale * 12;
+            }
+            return Math.max(5, (d.weight||0) * 1.5 + 4);
+          })
+          .attr('fill', d => useHeat ? (d._heatColor || '#1e3a5f') : (KIND_COLORS[d.kind] || '#8b949e'))
+          .attr('stroke', d => useHeat && d._isHot ? d._heatColor : '#0d1117')
+          .attr('stroke-width', d => useHeat && d._isHot ? 2.5 : 1.5)
+          .attr('cursor', 'grab')
+          .style('filter', d => useHeat && d._isHot ? 'url(#glow)' : null)
+          .style('animation', d => useHeat && d._isHot ? 'glow-pulse 2s infinite' : null)
+          .call(d3.drag()
+            .on('start', (e,d) => { if (!e.active) graphSim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+            .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+            .on('end', (e,d) => { if (!e.active) graphSim.alphaTarget(0); d.fx=null; d.fy=null; })
+          );
+
+      // Labels
+      const label = g.append('g')
+        .selectAll('text')
+        .data(d3nodes)
+        .join('text')
+          .text(d => d.name.length > 25 ? d.name.slice(0,22) + '…' : d.name)
+          .attr('dx', 10)
+          .attr('dy', 3)
+          .attr('font-size', '10px');
+
+      // Tooltip
+      const tooltip = d3.select(container).append('div')
+        .style('position','absolute').style('display','none')
+        .style('background','var(--surface)').style('border','1px solid var(--border)')
+        .style('border-radius','6px').style('padding','8px 12px')
+        .style('font-size','12px').style('pointer-events','none')
+        .style('z-index','10').style('max-width','300px');
+
+      node.on('mouseover', (e, d) => {
+        let tip = `<strong>${d.name}</strong><br><span style="color:var(--text-dim)">${d.kind}</span>`;
+        if (d.weight) tip += `<br>Connections: ${d.weight}`;
+        if (useHeat) {
+          tip += `<br>Access count: ${d._accessCount || 0}`;
+          if (d.last_accessed) tip += `<br>Last accessed: ${ago(d.last_accessed)}`;
+          if (d._isHot) tip += `<br><span style="color:#f85149">🔥 Recently active</span>`;
+        }
+        if (d.content_preview) tip += `<br><span style="color:var(--text-dim);font-size:11px">${d.content_preview}</span>`;
+        tooltip.style('display','block').html(tip);
+      }).on('mousemove', (e) => {
+        tooltip.style('left', (e.offsetX+15)+'px').style('top', (e.offsetY-10)+'px');
+      }).on('mouseout', () => tooltip.style('display','none'));
+
+      // Tick
+      graphSim.on('tick', () => {
+        link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+            .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+        if (edgeLabel) {
+          edgeLabel.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2);
+        }
+        node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+        label.attr('x',d=>d.x).attr('y',d=>d.y);
+      });
+
+    } catch(e) {
+      html(container, `<div class="empty">Error: ${e.message}</div>`);
+    }
+  }
+
+  $('#g-load').onclick = loadGraph;
+  $('#g-project').onchange = loadGraph;
+  $('#g-mode').onchange = () => { threshWrap.style.display = modeEl.value === 'similarity' ? '' : 'none'; loadGraph(); };
+  loadGraph();
+}
+
+// ── Sessions ──
+async function renderSessions(c) {
+  let detailed = {};
+  try { detailed = await api('/api/stats/detailed'); } catch(e) {}
+  const sessions = detailed.recent_sessions || [];
+
+  html(c, `
+    <h2>Sessions <span style="font-size:14px;color:var(--text-dim);font-weight:normal">(${sessions.length})</span></h2>
+    ${sessions.length ? `<table><tr><th>Task</th><th>Project</th><th>Started</th><th>Ended</th><th>Summary</th></tr>
+      ${sessions.map(s => `<tr>
+        <td>${truncate(s.task||'—',40)}</td>
+        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" onclick="event.preventDefault();goTab('entities',{project:'${s.project_name}'})">${s.project_name}</a>` : '—'}</td>
+        <td>${ago(s.started_at)}</td>
+        <td>${s.ended_at ? ago(s.ended_at) : '<span style="color:var(--success)">Active</span>'}</td>
+        <td title="${(s.summary||'').replace(/"/g,'&quot;')}">${truncate(s.summary||'—',60)}</td>
+      </tr>`).join('')}
+    </table>` : '<div class="empty">No sessions yet</div>'}
+  `);
+}
+
+// ── API Keys ──
+async function renderKeys(c) {
+  const data = await api('/api/admin/keys');
+  const keys = data.keys || [];
+
+  html(c, `
+    <h2>API Keys</h2>
+    <div style="margin-bottom:16px"><button class="btn btn-primary" id="key-add-btn">+ Create Key</button></div>
+    ${keys.length ? `<table><tr><th>Name</th><th>Role</th><th>Projects</th><th>Created</th><th>Last Used</th><th>Actions</th></tr>
+      ${keys.map(k => {
+        const revoked = !!k.revoked_at;
+        const style = revoked ? 'opacity:0.4' : '';
+        return `<tr style="${style}">
+        <td class="mono">${k.name}</td>
+        <td><span class="badge" style="background:${k.role==='admin'?'var(--danger)':'var(--accent)'}22;color:${k.role==='admin'?'var(--danger)':'var(--accent)'}">${k.role}</span></td>
+        <td>${(k.projects||[]).join(', ') || '*'}</td>
+        <td>${ago(k.created_at)}</td>
+        <td>${k.last_used ? ago(k.last_used) : 'Never'}</td>
+        <td class="flex">${!revoked ? `
+          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="editKey('${k.name}','${k.role}',${jsonAttr(k.projects||[])})">Edit</button>
+          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="cycleKey('${k.name}')">Cycle</button>
+          <button class="btn btn-danger btn-sm" onclick="revokeKey('${k.name}')">Revoke</button>
+        ` : '<span style="color:var(--danger);font-size:12px">Revoked</span>'}</td>
+      </tr>`;}).join('')}
+    </table>` : '<div class="empty">No API keys</div>'}
+  `);
+
+  $('#key-add-btn').onclick = () => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal">
+      <h3>Create API Key</h3>
+      <div class="form-row"><label>Name</label><input id="nk-name" placeholder="e.g. cursor-agent"></div>
+      <div class="form-row"><label>Role</label><select id="nk-role"><option>agent</option><option>admin</option></select></div>
+      <div class="form-row"><label>Projects (comma-separated, blank for all)</label><input id="nk-projects"></div>
+      <div class="form-row"><label>Expires in days (blank for never)</label><input id="nk-expires" type="number"></div>
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn" id="nk-cancel" style="background:var(--surface-2)">Cancel</button>
+        <button class="btn btn-primary" id="nk-save">Create</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('#nk-cancel').onclick = () => bg.remove();
+    bg.querySelector('#nk-save').onclick = async () => {
+      const body = {
+        name: bg.querySelector('#nk-name').value,
+        role: bg.querySelector('#nk-role').value,
+        projects: bg.querySelector('#nk-projects').value ? bg.querySelector('#nk-projects').value.split(',').map(t=>t.trim()) : [],
+        expires_in_days: bg.querySelector('#nk-expires').value ? parseInt(bg.querySelector('#nk-expires').value) : undefined,
+      };
+      try {
+        const res = await api('/api/admin/keys', {method:'POST', body:JSON.stringify(body)});
+        bg.remove();
+        // Show key in a new modal
+        const bg2 = document.createElement('div');
+        bg2.className = 'modal-bg';
+        bg2.innerHTML = `<div class="modal">
+          <h3>API Key Created</h3>
+          <p style="margin-bottom:12px">Copy this key now — it won't be shown again:</p>
+          <input value="${res.key}" readonly onclick="this.select()" class="mono" style="font-size:13px">
+          <div class="flex" style="justify-content:flex-end;margin-top:16px">
+            <button class="btn btn-primary" id="nk-done">Done</button>
+          </div>
+        </div>`;
+        document.body.appendChild(bg2);
+        bg2.querySelector('#nk-done').onclick = () => { bg2.remove(); renderTab(); };
+      } catch(e) { toast(e.message, false); }
+    };
+  };
+}
+
+window.editKey = function(name, role, projectsJson) {
+  const projects = JSON.parse(projectsJson);
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>Edit Key: ${name}</h3>
+    <div class="form-row"><label>Role</label><select id="ek-role">
+      <option value="agent" ${role==='agent'?'selected':''}>agent</option>
+      <option value="admin" ${role==='admin'?'selected':''}>admin</option>
+    </select></div>
+    <div class="form-row" id="ek-projects-row"><label>Projects (comma-separated)</label>
+      <input id="ek-projects" value="${projects.join(', ')}">
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Admin keys always get wildcard (*) access</div>
+    </div>
+    <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" id="ek-cancel" style="background:var(--surface-2)">Cancel</button>
+      <button class="btn btn-primary" id="ek-save">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#ek-cancel').onclick = () => bg.remove();
+  // Toggle projects field visibility based on role
+  const roleSelect = bg.querySelector('#ek-role');
+  const projRow = bg.querySelector('#ek-projects-row');
+  roleSelect.onchange = () => { projRow.style.display = roleSelect.value === 'admin' ? 'none' : ''; };
+  if (role === 'admin') projRow.style.display = 'none';
+
+  bg.querySelector('#ek-save').onclick = async () => {
+    const newRole = bg.querySelector('#ek-role').value;
+    const newProjects = newRole === 'admin' ? ['*'] : bg.querySelector('#ek-projects').value.split(',').map(t=>t.trim()).filter(Boolean);
+    try {
+      await api(`/api/admin/keys/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole, projects: newProjects }),
+      });
+      toast(`Key "${name}" updated`);
+      bg.remove();
+      renderTab();
+    } catch(e) { toast(e.message, false); }
+  };
+};
+
+window.revokeKey = async function(name) {
+  if (!confirm(`Revoke key "${name}"?`)) return;
+  try {
+    await api(`/api/admin/keys/${encodeURIComponent(name)}`, {method:'DELETE'});
+    toast('Key revoked');
+    renderTab();
+  } catch(e) { toast(e.message, false); }
+};
+
+window.cycleKey = async function(name) {
+  if (!confirm(`Rotate key "${name}"?\n\nThe current key will be revoked and a new one issued with the same name, role, and projects.`)) return;
+  try {
+    const res = await api(`/api/admin/keys/${encodeURIComponent(name)}/cycle`, {method:'POST'});
+    // Show new key in a modal (only shown once)
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal">
+      <h3>Key Rotated: ${name}</h3>
+      <p style="color:var(--danger);font-weight:600;margin-bottom:8px">Copy this key now — it will not be shown again!</p>
+      <input id="ck-key" value="${res.key}" readonly style="font-family:var(--mono);font-size:13px;width:100%">
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" id="ck-copy">Copy</button>
+        <button class="btn" id="ck-done" style="background:var(--surface-2)">Done</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('#ck-copy').onclick = () => { navigator.clipboard.writeText(res.key); toast('Copied'); };
+    bg.querySelector('#ck-done').onclick = () => { bg.remove(); renderTab(); };
+  } catch(e) { toast(e.message, false); }
+};
+
+// ── Backups ──
+async function renderBackups(c) {
+  const data = await api('/api/admin/backups');
+  const backups = data.backups || [];
+
+  function fmtSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    return (b/1048576).toFixed(1) + ' MB';
+  }
+  function fmtMeta(m) {
+    if (!m || !m.tables) return '';
+    const parts = [];
+    for (const [t, n] of Object.entries(m.tables)) if (n > 0) parts.push(`${t}: ${n}`);
+    return parts.join(', ');
+  }
+
+  html(c, `
+    <h2>Backups</h2>
+    <div class="flex mb">
+      <button class="btn btn-primary" id="backup-create-btn">Create Backup</button>
+      <span style="font-size:13px;color:var(--text-dim);margin-left:12px">
+        ${backups.length} backup${backups.length!==1?'s':''} on disk
+      </span>
+    </div>
+    ${backups.length ? `<table>
+      <tr><th>Filename</th><th>Version</th><th>Format</th><th>Size</th><th>Date</th><th>Contents</th><th>Actions</th></tr>
+      ${backups.map(b => `<tr>
+        <td class="mono" style="font-size:12px">${b.filename}</td>
+        <td>${b.engram_version || '?'}</td>
+        <td>v${b.format_version || '?'}</td>
+        <td>${fmtSize(b.size_bytes)}</td>
+        <td>${ago(b.created_at || b.modified_at)}</td>
+        <td style="font-size:12px;max-width:300px;white-space:normal">${fmtMeta(b.metadata)}</td>
+        <td>
+          <div class="flex">
+            <button class="btn btn-primary btn-sm" onclick="restoreBackup('${b.filename}')">Restore</button>
+            <a href="/api/admin/backups/${encodeURIComponent(b.filename)}/download" class="btn btn-sm" style="background:var(--surface-2);color:var(--text);text-decoration:none;display:inline-block">Download</a>
+            <button class="btn btn-danger btn-sm" onclick="deleteBackup('${b.filename}')">Delete</button>
+          </div>
+        </td>
+      </tr>`).join('')}
+    </table>` : '<div class="empty">No backups yet. Create one to get started.</div>'}
+  `);
+
+  $('#backup-create-btn').onclick = async () => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal">
+      <h3>Create Backup</h3>
+      <p style="margin-bottom:12px;color:var(--text-dim)">Export all memories, entities, relationships, sessions, and projects to a JSON archive.</p>
+      <div class="form-row"><label>Label (optional)</label><input id="bk-label" placeholder="e.g. pre-migration, weekly"></div>
+      <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn" id="bk-cancel" style="background:var(--surface-2)">Cancel</button>
+        <button class="btn btn-primary" id="bk-save">Create Backup</button>
+      </div>
+    </div>`;
+    document.body.appendChild(bg);
+    bg.querySelector('#bk-cancel').onclick = () => bg.remove();
+    bg.querySelector('#bk-save').onclick = async () => {
+      const label = bg.querySelector('#bk-label').value;
+      const btn = bg.querySelector('#bk-save');
+      btn.textContent = 'Creating...';
+      btn.disabled = true;
+      try {
+        const res = await api('/api/admin/backup', {
+          method: 'POST',
+          body: JSON.stringify({label}),
+        });
+        bg.remove();
+        toast(`Backup created: ${res.filename}`);
+        renderTab();
+      } catch(e) { toast(e.message, false); btn.textContent = 'Create Backup'; btn.disabled = false; }
+    };
+  };
+}
+
+window.restoreBackup = async function(filename) {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>Restore Backup</h3>
+    <p style="margin-bottom:12px">Restore from: <strong class="mono" style="font-size:12px">${filename}</strong></p>
+    <div class="form-row">
+      <label>Restore Mode</label>
+      <select id="rs-mode">
+        <option value="merge">Merge — add/update records, keep extra data</option>
+        <option value="clean">Clean — wipe all tables first, then import</option>
+      </select>
+    </div>
+    <div style="padding:12px;border-radius:6px;margin:12px 0;background:#f8514922;color:var(--danger);font-size:13px;display:none" id="rs-warn">
+      ⚠️ <strong>Clean mode will DELETE all existing data</strong> before restoring. This is irreversible.
+    </div>
+    <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" id="rs-cancel" style="background:var(--surface-2)">Cancel</button>
+      <button class="btn btn-primary" id="rs-go">Restore</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#rs-mode').onchange = (e) => {
+    bg.querySelector('#rs-warn').style.display = e.target.value === 'clean' ? 'block' : 'none';
+  };
+  bg.querySelector('#rs-cancel').onclick = () => bg.remove();
+  bg.querySelector('#rs-go').onclick = async () => {
+    const mode = bg.querySelector('#rs-mode').value;
+    if (mode === 'clean' && !confirm('Are you sure? This will DELETE all existing data before restoring.')) return;
+    const btn = bg.querySelector('#rs-go');
+    btn.textContent = 'Restoring...';
+    btn.disabled = true;
+    try {
+      const res = await api(`/api/admin/restore/${encodeURIComponent(filename)}`, {
+        method: 'POST',
+        body: JSON.stringify({mode}),
+      });
+      bg.remove();
+      const errs = res.errors?.length ? ` (${res.errors.length} errors)` : '';
+      const upgraded = res.upgraded_from_format ? ` [upgraded from format v${res.upgraded_from_format}]` : '';
+      toast(`Restored ${res.total_restored} rows (${mode} mode)${upgraded}${errs}`);
+      renderTab();
+    } catch(e) { toast(e.message, false); btn.textContent = 'Restore'; btn.disabled = false; }
+  };
+};
+
+window.deleteBackup = async function(filename) {
+  if (!confirm(`Delete backup "${filename}"?`)) return;
+  try {
+    await api(`/api/admin/backups/${encodeURIComponent(filename)}`, {method:'DELETE'});
+    toast('Backup deleted');
+    renderTab();
+  } catch(e) { toast(e.message, false); }
+};
+
+// ── Activity Stream ──
+let _loggerInterval = null;
+let _loggerPaused = false;
+let _loggerLastEventId = 0;
+
+function _stopLogger() {
+  if (_loggerInterval) { clearInterval(_loggerInterval); _loggerInterval = null; }
+}
+
+const ACTIVITY_TYPES = {
+  write:   { icon: '✏️', color: '#58a6ff', label: 'Write' },
+  recall:  { icon: '🔍', color: '#bc8cff', label: 'Recall' },
+  session: { icon: '🔗', color: '#3fb950', label: 'Session' },
+  entity:  { icon: '🔗', color: '#79c0ff', label: 'Entity' },
+  reflect: { icon: '🔮', color: '#d29922', label: 'Reflect' },
+  dedup:   { icon: '♻️', color: '#f0883e', label: 'Dedup' },
+  forget:  { icon: '🗑️', color: '#f85149', label: 'Forget' },
+  conflict:{ icon: '⚡', color: '#da3633', label: 'Conflict' },
+};
+let _activityTypeFilter = new Set(Object.keys(ACTIVITY_TYPES)); // all on by default
+
+async function renderLogger(c) {
+  _stopLogger();
+  _loggerPaused = false;
+  _loggerLastEventId = 0;
+  _activityTypeFilter = new Set(Object.keys(ACTIVITY_TYPES));
+
+  // Fetch projects for filter
+  let projects = [];
+  try { projects = (await api('/api/projects')).projects || []; } catch(e) {}
+
+  html(c, `
+    <h2>Activity Stream</h2>
+    <div class="activity-bar">
+      <div class="activity-chips" id="ac-chips">
+        ${Object.entries(ACTIVITY_TYPES).map(([k, v]) => `
+          <span class="activity-chip" data-type="${k}">
+            <span class="acdot" style="background:${v.color}"></span>${v.label}
+          </span>
+        `).join('')}
+      </div>
+      <select id="ac-project" style="width:160px">
+        <option value="">All projects</option>
+        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+      </select>
+      <button class="btn" id="ac-pause-btn" style="background:var(--surface-2)">Pause</button>
+      <div class="activity-status">
+        <span class="dot dot-live" id="ac-dot"></span>
+        <span id="ac-status-text">Live</span>
+      </div>
+    </div>
+    <div class="activity-stats" id="ac-stats"></div>
+    <div class="activity-stream" id="ac-stream">
+      <div class="empty">Connecting…</div>
+    </div>
+  `);
+
+  // Wire chip toggles
+  document.querySelectorAll('#ac-chips .activity-chip').forEach(chip => {
+    chip.onclick = () => {
+      const t = chip.dataset.type;
+      if (_activityTypeFilter.has(t)) {
+        _activityTypeFilter.delete(t);
+        chip.classList.add('off');
+      } else {
+        _activityTypeFilter.add(t);
+        chip.classList.remove('off');
+      }
+      // Re-render with filter applied
+      renderEvents(_allActivityEvents);
+    };
+  });
+
+  let _allActivityEvents = [];
+
+  function renderEvents(events) {
+    const stream = $('#ac-stream');
+    if (!stream) return;
+
+    const filtered = events.filter(e => _activityTypeFilter.has(e.type));
+    if (!filtered.length) {
+      html(stream, '<div class="empty">No activity events yet — use MCP tools to generate events</div>');
+      return;
+    }
+
+    html(stream, filtered.map(e => {
+      const t = ACTIVITY_TYPES[e.type] || { icon: '•', color: '#8b949e', label: e.type };
+      const ts = e.ts ? new Date(e.ts) : null;
+      const timeStr = ts ? ts.toLocaleTimeString() : '';
+      const agoStr = ts ? ago(e.ts) : '';
+      return `
+        <div class="activity-entry" data-eid="${e.id}">
+          <div class="ae-icon" style="background:${t.color}22;color:${t.color}">${t.icon}</div>
+          <div class="ae-body">
+            <div class="ae-top">
+              <span class="ae-type" style="color:${t.color}">${t.label}</span>
+              <span class="ae-time" title="${e.ts}">${timeStr} · ${agoStr}</span>
+            </div>
+            <div class="ae-summary">${escapeHtml(e.summary || '')}</div>
+            ${e.detail ? `<div class="ae-detail">${escapeHtml(e.detail)}</div>` : ''}
+            <div class="ae-meta">
+              ${e.project ? `<span>📁 ${escapeHtml(e.project)}</span>` : ''}
+              ${e.agent ? `<span>🤖 ${escapeHtml(e.agent)}</span>` : ''}
+              ${e.memory_id ? `<span class="mono">${e.memory_id.slice(0,8)}</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join(''));
+
+    // Highlight new entries
+    const newEntries = stream.querySelectorAll('.activity-entry:nth-child(-n+3)');
+    newEntries.forEach(el => {
+      if (!el.classList.contains('ae-seen')) {
+        el.classList.add('ae-new');
+        el.classList.add('ae-seen');
+        setTimeout(() => el.classList.remove('ae-new'), 2000);
+      }
+    });
+  }
+
+  function renderStats(stats) {
+    const el = $('#ac-stats');
+    if (!el || !stats) return;
+    const parts = [];
+    parts.push(`<span class="rate">${(stats.events_per_minute || 0).toFixed(1)} events/min</span>`);
+    parts.push(`<span>${stats.buffer_size || 0} buffered</span>`);
+    if (stats.by_type) {
+      const top = Object.entries(stats.by_type).sort((a,b) => b[1] - a[1]).slice(0, 4);
+      if (top.length) {
+        parts.push(top.map(([k, v]) => {
+          const t = ACTIVITY_TYPES[k] || {};
+          return `<span style="color:${t.color || '#8b949e'}">${k}: ${v}</span>`;
+        }).join(' · '));
+      }
+    }
+    el.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  }
+
+  const pollActivity = async () => {
+    let url = `/api/activity?limit=200`;
+    if (_loggerLastEventId) url += `&since=${_loggerLastEventId}`;
+    const proj = $('#ac-project')?.value;
+    if (proj) url += `&project=${encodeURIComponent(proj)}`;
+    try {
+      const data = await api(url);
+      const events = data.events || [];
+      if (events.length > 0) {
+        const existingIds = new Set(_allActivityEvents.map(e => e.id));
+        const newEvents = events.filter(e => !existingIds.has(e.id));
+        // API returns newest-first; prepend new events and keep sorted
+        _allActivityEvents = [...newEvents, ..._allActivityEvents]
+          .sort((a, b) => b.id - a.id)
+          .slice(0, 500);
+        _loggerLastEventId = Math.max(_loggerLastEventId, ...events.map(e => e.id));
+      }
+      renderEvents(_allActivityEvents);
+      renderStats(data.stats);
+    } catch(e) {
+      // Silently retry
+    }
+  };
+
+  // Initial load
+  await pollActivity();
+
+  // Auto-refresh every 3s
+  _loggerInterval = setInterval(async () => {
+    if (_loggerPaused) return;
+    await pollActivity();
+  }, 3000);
+
+  // Pause button
+  $('#ac-pause-btn').onclick = () => {
+    _loggerPaused = !_loggerPaused;
+    $('#ac-pause-btn').textContent = _loggerPaused ? 'Resume' : 'Pause';
+    const dot = $('#ac-dot');
+    const status = $('#ac-status-text');
+    if (_loggerPaused) {
+      dot.className = 'dot dot-paused';
+      status.textContent = 'Paused';
+    } else {
+      dot.className = 'dot dot-live';
+      status.textContent = 'Live';
+      pollActivity();
+    }
+  };
+
+  // Project filter change triggers full reload
+  $('#ac-project').onchange = async () => {
+    _allActivityEvents = [];
+    _loggerLastEventId = 0;
+    await pollActivity();
+  };
+}
+
+// ── Diagnostics ──
+let _diagInterval = null;
+
+function _stopDiagnostics() {
+  if (_diagInterval) { clearInterval(_diagInterval); _diagInterval = null; }
+}
+
+function _pctBar(value, max, color) {
+  const pct = max > 0 ? Math.min(100, Math.round(value / max * 100)) : 0;
+  return `<div style="display:flex;align-items:center;gap:8px">
+    <div style="flex:1;height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden">
+      <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .5s"></div>
+    </div>
+    <span style="font-size:12px;color:var(--text-dim);min-width:36px;text-align:right">${pct}%</span>
+  </div>`;
+}
+
+async function renderDiagnostics(c) {
+  _stopDiagnostics();
+
+  const render = async () => {
+    let stats, health, detailed = {};
+    try {
+      [stats, health] = await Promise.all([api('/api/stats'), api('/health')]);
+    } catch(e) {
+      html(c, `<div class="empty">Error loading diagnostics: ${e.message}</div>`);
+      return;
+    }
+    try { detailed = await api('/api/stats/detailed'); } catch(e) {}
+
+    const d = stats.dedup || {};
+    const calls = d.remember_calls || 0;
+    const simBlocked = d.simhash_blocked || 0;
+    const semBlocked = d.semantic_blocked || 0;
+    const conflicts = d.conflicts_surfaced || 0;
+    const stored = calls - simBlocked - semBlocked;
+    const dedupRate = calls > 0 ? ((simBlocked + semBlocked) / calls * 100).toFixed(1) : '0.0';
+
+    html(c, `
+      <h2>Diagnostics</h2>
+
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="value" style="color:var(--accent)">${calls}</div>
+          <div class="label">remember() calls</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">since last restart</div>
+        </div>
+        <div class="stat">
+          <div class="value" style="color:var(--success)">${stored}</div>
+          <div class="label">Memories stored</div>
+        </div>
+        <div class="stat">
+          <div class="value" style="color:var(--warning)">${simBlocked + semBlocked}</div>
+          <div class="label">Duplicates blocked</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px">${dedupRate}% dedup rate</div>
+        </div>
+        <div class="stat">
+          <div class="value" style="color:var(--purple)">${conflicts}</div>
+          <div class="label">Conflicts surfaced</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Dedup Pipeline</h3>
+        <table>
+          <tr><th>Stage</th><th>Action</th><th>Count</th><th>Share</th></tr>
+          <tr>
+            <td><span class="badge badge-fact">Pass 1</span></td>
+            <td>SimHash (exact wording)</td>
+            <td><strong>${simBlocked}</strong> blocked</td>
+            <td>${_pctBar(simBlocked, calls, 'var(--accent)')}</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-decision">Pass 2</span></td>
+            <td>Semantic (same meaning)</td>
+            <td><strong>${semBlocked}</strong> blocked</td>
+            <td>${_pctBar(semBlocked, calls, 'var(--purple)')}</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-pattern">Pass 3</span></td>
+            <td>Conflict surfacing</td>
+            <td><strong>${conflicts}</strong> flagged</td>
+            <td>${_pctBar(conflicts, calls, 'var(--warning)')}</td>
+          </tr>
+          <tr style="border-top:2px solid var(--border)">
+            <td></td>
+            <td><strong>Stored successfully</strong></td>
+            <td><strong>${stored}</strong></td>
+            <td>${_pctBar(stored, calls, 'var(--success)')}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <h3>System Health</h3>
+          <table>
+            <tr><td>Status</td><td><strong style="color:var(--success)">${health.status || '?'}</strong></td></tr>
+            <tr><td>Version</td><td><strong>${health.version || '?'}</strong></td></tr>
+            <tr><td>Embeddings</td><td><strong style="color:${stats.embeddings_enabled ? 'var(--success)' : 'var(--danger)'}">${stats.embeddings_enabled ? 'Enabled' : 'Disabled'}</strong></td></tr>
+            <tr><td>Memories</td><td>${stats.total_memories || 0}</td></tr>
+            <tr><td>Vectors</td><td>${stats.total_vectors || 0}</td></tr>
+            <tr><td>Entities</td><td>${stats.total_entities || 0}</td></tr>
+            <tr><td>Projects</td><td>${stats.total_projects || 0}</td></tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>Dedup Health Signals</h3>
+          <div style="font-size:13px;line-height:2">
+            ${_diagSignal(calls, simBlocked, semBlocked, conflicts)}
+          </div>
+        </div>
+      </div>
+
+      ${detailed.memories_by_kind ? `<div class="card">
+        <h3>Memory Distribution</h3>
+        <table>
+          <tr><th>Kind</th><th>Count</th><th>Share</th></tr>
+          ${Object.entries(detailed.memories_by_kind).sort((a,b)=>b[1]-a[1]).map(([k,v]) => {
+            const total = Object.values(detailed.memories_by_kind).reduce((a,b)=>a+b,0);
+            return `<tr><td>${badge(k)}</td><td>${v}</td><td>${_pctBar(v, total, 'var(--accent)')}</td></tr>`;
+          }).join('')}
+        </table>
+      </div>` : ''}
+
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text-dim)">
+        Auto-refreshing every 10s &bull; Counters reset on container restart
+      </div>
+    `);
+  };
+
+  await render();
+  _diagInterval = setInterval(async () => {
+    try { await render(); } catch(e) {}
+  }, 10000);
+}
+
+function _diagSignal(calls, simBlocked, semBlocked, conflicts) {
+  const lines = [];
+  if (calls === 0) {
+    lines.push('<span style="color:var(--text-dim)">&#x23F3; No remember() calls yet — signals will appear after agents start using engram.</span>');
+    return lines.join('');
+  }
+
+  const dedupRate = (simBlocked + semBlocked) / calls * 100;
+  const semRate = semBlocked / calls * 100;
+  const conflictRate = conflicts / calls * 100;
+
+  // Dedup rate signal
+  if (dedupRate > 50) {
+    lines.push('<span style="color:var(--warning)">&#x26A0; High dedup rate (' + dedupRate.toFixed(0) + '%) — agents may be re-submitting the same knowledge frequently.</span>');
+  } else if (dedupRate > 0) {
+    lines.push('<span style="color:var(--success)">&#x2705; Dedup is catching duplicates (' + dedupRate.toFixed(0) + '% dedup rate). Pipeline working as expected.</span>');
+  } else {
+    lines.push('<span style="color:var(--text-dim)">&#x2139;&#xFE0F; No duplicates detected yet — either all memories are unique or thresholds need tuning.</span>');
+  }
+
+  // Semantic vs SimHash balance
+  if (simBlocked > 0 && semBlocked === 0) {
+    lines.push('<span style="color:var(--text-dim)">&#x2139;&#xFE0F; SimHash catching all dupes — agents are submitting near-identical text (semantic dedup not needed yet).</span>');
+  } else if (semBlocked > simBlocked) {
+    lines.push('<span style="color:var(--success)">&#x2705; Semantic dedup catching more than SimHash — the embedding model is adding value.</span>');
+  }
+
+  // Semantic blocked is high
+  if (semRate > 30) {
+    lines.push('<span style="color:var(--warning)">&#x26A0; Semantic dedup rate high (' + semRate.toFixed(0) + '%) — consider if threshold (0.92) is too low, or if the model is conflating different concepts.</span>');
+  }
+
+  // Conflict signal
+  if (conflictRate > 20) {
+    lines.push('<span style="color:var(--warning)">&#x26A0; Many conflicts surfacing (' + conflictRate.toFixed(0) + '%) — agents may be storing contradictory facts. Review recent conflicts.</span>');
+  } else if (conflicts > 0) {
+    lines.push('<span style="color:var(--success)">&#x2705; Conflict surfacing working — ' + conflicts + ' potential contradiction(s) flagged to agents.</span>');
+  } else {
+    lines.push('<span style="color:var(--text-dim)">&#x2139;&#xFE0F; No conflicts detected — either no contradictions or the 0.80 threshold needs adjustment.</span>');
+  }
+
+  return lines.map(l => '<div style="margin-bottom:4px">' + l + '</div>').join('');
+}
+
+// ── Reflection ──
+let _reflInterval = null;
+function _stopReflection() { if (_reflInterval) { clearInterval(_reflInterval); _reflInterval = null; } }
+
+async function renderReflection(c) {
+  _stopReflection();
+
+  let status = {};
+  try { status = await api('/api/admin/reflection/status'); } catch(e) {}
+
+  const render = async () => {
+    try { status = await api('/api/admin/reflection/status'); } catch(e) {}
+
+    const lastRun = status.last_run || {};
+    const sched = status.scheduler || {};
+    const isRunning = status.running || false;
+
+    html(c, `
+      <h2>Reflection</h2>
+      <p style="color:var(--text-dim);margin-bottom:16px">Periodic memory compaction: garbage-collects faded memories, consolidates similar ones into summaries, and resolves stale conflicts.</p>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="value">${lastRun.gc_obsoleted || 0}</div><div class="label">Faded &amp; GC'd</div></div>
+        <div class="stat"><div class="value">${lastRun.consolidated || 0}</div><div class="label">Consolidated</div></div>
+        <div class="stat"><div class="value">${lastRun.conflicts_resolved || 0}</div><div class="label">Conflicts Resolved</div></div>
+        <div class="stat"><div class="value" style="font-size:16px">${lastRun.finished_at ? new Date(lastRun.finished_at).toLocaleString() : 'Never'}</div><div class="label">Last Run</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Scheduler</h3>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div>Status: <strong style="color:${sched.enabled ? 'var(--success)' : 'var(--text-dim)'}">${sched.enabled ? 'Enabled' : 'Disabled'}</strong></div>
+          <div>Interval: <strong>${sched.interval_hours || '?'}h</strong></div>
+          <div>Next run: <strong>${sched.next_run ? new Date(sched.next_run).toLocaleString() : '—'}</strong></div>
+          <button class="btn btn-primary" id="refl-run-btn" ${isRunning ? 'disabled' : ''}>
+            ${isRunning ? 'Running…' : '&#x25B6; Run Now'}
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Configuration</h3>
+        <table>
+          <tr><td>GC Retrievability Threshold</td><td><strong>${status.config?.gc_threshold || '0.05'}</strong></td><td style="color:var(--text-dim);font-size:12px">Memories below this retrievability get marked obsolete</td></tr>
+          <tr><td>Consolidation Similarity</td><td><strong>${status.config?.consolidation_threshold || '0.88'}</strong></td><td style="color:var(--text-dim);font-size:12px">Cosine similarity above which memories are merged</td></tr>
+          <tr><td>Min Cluster Size</td><td><strong>${status.config?.min_cluster_size || '3'}</strong></td><td style="color:var(--text-dim);font-size:12px">Minimum memories to form a consolidation group</td></tr>
+          <tr><td>Max Consolidation Per Run</td><td><strong>${status.config?.max_consolidations || '10'}</strong></td><td style="color:var(--text-dim);font-size:12px">Safety cap on how many groups to consolidate per cycle</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Hard Forget</h3>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:12px">Permanently remove obsolete memories from the database. This is irreversible — data is deleted, not just flagged.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-danger" id="refl-purge-btn">Purge Obsolete Memories</button>
+          <span id="refl-purge-status" style="font-size:13px;color:var(--text-dim)"></span>
+        </div>
+      </div>
+
+      ${lastRun.log ? `<div class="card">
+        <h3>Last Run Log</h3>
+        <div class="refl-run-log">${escapeHtml(lastRun.log)}</div>
+      </div>` : ''}
+
+      ${(status.history || []).length ? `<div class="card">
+        <h3>History</h3>
+        <table><tr><th>Time</th><th>GC'd</th><th>Consolidated</th><th>Conflicts</th><th>Duration</th></tr>
+          ${status.history.map(h => `<tr>
+            <td>${h.finished_at ? new Date(h.finished_at).toLocaleString() : '—'}</td>
+            <td>${h.gc_obsoleted || 0}</td>
+            <td>${h.consolidated || 0}</td>
+            <td>${h.conflicts_resolved || 0}</td>
+            <td>${h.duration_seconds ? h.duration_seconds.toFixed(1) + 's' : '—'}</td>
+          </tr>`).join('')}
+        </table>
+      </div>` : ''}
+    `);
+
+    // Wire run button
+    const btn = $('#refl-run-btn');
+    if (btn && !isRunning) {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        btn.textContent = 'Running…';
+        try {
+          await api('/api/admin/reflection/run', {method:'POST'});
+          toast('Reflection started');
+          setTimeout(() => render(), 2000);
+        } catch(e) { toast(e.message, false); btn.disabled = false; btn.innerHTML = '&#x25B6; Run Now'; }
+      };
+    }
+
+    // Wire purge button
+    const purgeBtn = $('#refl-purge-btn');
+    if (purgeBtn) {
+      purgeBtn.onclick = async () => {
+        if (!confirm('Permanently DELETE all obsolete memories from the database?\\n\\nThis cannot be undone. Consider making a backup first.')) return;
+        purgeBtn.disabled = true;
+        purgeBtn.textContent = 'Purging…';
+        try {
+          const res = await api('/api/admin/purge-obsolete', {method:'POST'});
+          toast(`Purged ${res.purged} obsolete memories`);
+          $('#refl-purge-status').textContent = `${res.purged} memories permanently deleted`;
+          purgeBtn.disabled = false;
+          purgeBtn.textContent = 'Purge Obsolete Memories';
+        } catch(e) {
+          toast(e.message, false);
+          purgeBtn.disabled = false;
+          purgeBtn.textContent = 'Purge Obsolete Memories';
+        }
+      };
+    }
+  };
+
+  await render();
+  _reflInterval = setInterval(render, 15000);
+}
+
+// Stop logger polling when switching tabs
+const _origRenderTab = renderTab;
+renderTab = async function() {
+  if (currentTab !== 'logger') _stopLogger();
+  if (currentTab !== 'diagnostics') _stopDiagnostics();
+  if (currentTab !== 'reflection') _stopReflection();
+  return _origRenderTab();
+};
+
+// Initial render
+renderTab();
+</script>
+</body>
+</html>

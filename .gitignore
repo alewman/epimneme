@@ -1,0 +1,39 @@
+# Database volumes
+db-data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Local deployment overrides (copy from docker-compose.example.yml)
+docker-compose.yml
+docker-compose.override.yml
+.env
+
+# Backups
+backups/
+
+# Activity logs
+logs/
+
+# Benchmark data — fetched by benchmarks/download_data.sh
+benchmarks/data/**
+!benchmarks/data/
+!benchmarks/data/test_*_fixture.json
+
+# Benchmark run logs and tuning sweeps
+benchmarks/*.log
+benchmarks/sweep*

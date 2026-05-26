@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "epimneme"
+version = "0.7.0"
+description = "Persistent memory service for AI coding agents — PostgreSQL + pgvector backend"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [
+    {name = "Alewman"},
+]
+keywords = ["mcp", "ai-agents", "memory", "epimneme", "rag", "pgvector", "semantic-search", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "mcp[cli]>=1.2.0",
+    "psycopg[binary,pool]>=3.2.0",
+    "pydantic>=2.0.0",
+    "sentence-transformers>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+epimneme-server = "epimneme.server:main"
+epimneme-manage = "epimneme.manage:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/epimneme"]
+artifacts = ["src/epimneme/templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: tests against live PostgreSQL (may be slow)",
+]

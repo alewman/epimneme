@@ -1,0 +1,48 @@
+[
+  {
+    "question_id": "test_q1",
+    "question_type": "single-session-user",
+    "question": "What programming language did the user mention wanting to learn?",
+    "answer": "Rust",
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I've been thinking about learning Rust for systems programming. It has great memory safety features."},
+        {"role": "assistant", "content": "Rust is a great choice! It offers memory safety without garbage collection."}
+      ],
+      [
+        {"role": "user", "content": "Today I went grocery shopping and picked up some vegetables for dinner."},
+        {"role": "assistant", "content": "That sounds like a healthy choice!"}
+      ],
+      [
+        {"role": "user", "content": "My cat keeps knocking things off the table. It's very annoying."},
+        {"role": "assistant", "content": "Cats do love to push things off edges!"}
+      ]
+    ],
+    "haystack_session_ids": ["sess_1", "sess_2", "sess_3"],
+    "haystack_dates": ["2024-01-15", "2024-01-16", "2024-01-17"],
+    "answer_session_ids": ["sess_1"]
+  },
+  {
+    "question_id": "test_q2",
+    "question_type": "multi-session-user",
+    "question": "What pet does the user have?",
+    "answer": "A cat",
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I love hiking in the mountains on weekends."},
+        {"role": "assistant", "content": "Mountain hiking is great exercise!"}
+      ],
+      [
+        {"role": "user", "content": "My cat keeps knocking things off the table. It is very annoying but also cute."},
+        {"role": "assistant", "content": "Cats do love to push things off edges!"}
+      ],
+      [
+        {"role": "user", "content": "I need to buy cat food and a new scratching post this weekend."},
+        {"role": "assistant", "content": "Your cat will love a new scratching post!"}
+      ]
+    ],
+    "haystack_session_ids": ["sess_4", "sess_5", "sess_6"],
+    "haystack_dates": ["2024-02-01", "2024-02-05", "2024-02-10"],
+    "answer_session_ids": ["sess_5", "sess_6"]
+  }
+]

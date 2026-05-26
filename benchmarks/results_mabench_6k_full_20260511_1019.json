@@ -1,0 +1,2431 @@
+{
+  "summary": {
+    "run_id": "mabench_6k_20260511_1020",
+    "created_at": "2026-05-11T17:20:14.265863",
+    "engram_url": "https://engram2.supertux.com",
+    "context_depth": "6k",
+    "top_k": 20,
+    "total_questions": 200,
+    "correct": 145,
+    "accuracy": 72.5,
+    "elapsed_s": 26.6,
+    "by_dataset": [
+      {
+        "dataset_id": "sf-mh",
+        "name": "Multi-hop",
+        "correct": 47,
+        "total": 100,
+        "accuracy": 47.0
+      },
+      {
+        "dataset_id": "sf-sh",
+        "name": "Single-hop",
+        "correct": 98,
+        "total": 100,
+        "accuracy": 98.0
+      }
+    ]
+  },
+  "results": [
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 0,
+      "question": "Which sport is goaltender associated with?",
+      "gold_answers": [
+        "pes\u00e4pallo"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 1,
+      "question": "What is Nobuhiro Watsuki famous for?",
+      "gold_answers": [
+        "The Fairly OddParents"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 2,
+      "question": "Which country was rugby union created in?",
+      "gold_answers": [
+        "India"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 3,
+      "question": "What is Ferdowsi famous for?",
+      "gold_answers": [
+        "Shahnameh"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 4,
+      "question": "Which university was Joan Didion educated at?",
+      "gold_answers": [
+        "University of California, Berkeley"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 5,
+      "question": "Who is the author of The Marriage of Figaro?",
+      "gold_answers": [
+        "Thomas Kyd"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 6,
+      "question": "Which sport is Tunisia national football team associated with?",
+      "gold_answers": [
+        "basketball"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 7,
+      "question": "Which sport is quarterback associated with?",
+      "gold_answers": [
+        "Muay Thai"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 8,
+      "question": "What is the official language of Japan?",
+      "gold_answers": [
+        "Swedish"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 9,
+      "question": "What is the name of the current head of the Tucson government?",
+      "gold_answers": [
+        "Jonathan Rothschild"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 10,
+      "question": "What is the name of the current head of the Italy government?",
+      "gold_answers": [
+        "Giuseppe Conte"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 11,
+      "question": "Who performed Meredith Grey?",
+      "gold_answers": [
+        "Ellen Pompeo"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 12,
+      "question": "What position does Robert Parish play?",
+      "gold_answers": [
+        "quarterback"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 13,
+      "question": "What is the country of citizenship of C\u00e9dric Klapisch?",
+      "gold_answers": [
+        "Malaysia"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 14,
+      "question": "Who is the author of Sidereus Nuncius?",
+      "gold_answers": [
+        "Samuel Beckett"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 15,
+      "question": "Which continent is Germany located in?",
+      "gold_answers": [
+        "Africa"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 16,
+      "question": "Which religion is Kingdom of Ireland affiliated with?",
+      "gold_answers": [
+        "Zoroastrianism"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 17,
+      "question": "Which country was association football created in?",
+      "gold_answers": [
+        "Italy"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 18,
+      "question": "Who is the developer of Windows Phone?",
+      "gold_answers": [
+        "Microsoft"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 19,
+      "question": "Who is the chief executive officer of Microsoft?",
+      "gold_answers": [
+        "Steve Jobs"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 20,
+      "question": "Who is the chairperson of Harvard University?",
+      "gold_answers": [
+        "Peter Diamandis"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 21,
+      "question": "Who founded Church of Scotland?",
+      "gold_answers": [
+        "John Knox"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 22,
+      "question": "Which sport is Galwegians RFC associated with?",
+      "gold_answers": [
+        "rugby union"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 23,
+      "question": "Who is the director of American Broadcasting Company?",
+      "gold_answers": [
+        "Ernst Heinkel"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 24,
+      "question": "Which city did Gennady Rozhdestvensky die in?",
+      "gold_answers": [
+        "United States of America"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 25,
+      "question": "What is the capital of Tang Empire?",
+      "gold_answers": [
+        "Beaumont"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 26,
+      "question": "Who is the director of British Broadcasting Corporation?",
+      "gold_answers": [
+        "Narendra Modi"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 27,
+      "question": "What is the country of citizenship of Benjamin Mazar?",
+      "gold_answers": [
+        "Israel"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 28,
+      "question": "What type of music does Michael Mantler play?",
+      "gold_answers": [
+        "post-punk"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 29,
+      "question": "Which city did Oscar Wilde die in?",
+      "gold_answers": [
+        "Guangzhou"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 30,
+      "question": "Which country was baseball created in?",
+      "gold_answers": [
+        "Japan"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 31,
+      "question": "What is the country of citizenship of Ernst Heinkel?",
+      "gold_answers": [
+        "Tang Empire"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 32,
+      "question": "Which city is the headquarter of The University of the Arts located in?",
+      "gold_answers": [
+        "Philadelphia"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 33,
+      "question": "Which country was rap rock created in?",
+      "gold_answers": [
+        "Russian Empire"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 34,
+      "question": "Where was Christianity founded?",
+      "gold_answers": [
+        "Taipei"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 35,
+      "question": "What is the official language of United States of America?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 36,
+      "question": "Who performed Past Masters?",
+      "gold_answers": [
+        "Madonna"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 37,
+      "question": "What is the capital of Japan?",
+      "gold_answers": [
+        "Tokyo"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 38,
+      "question": "What is the capital of France?",
+      "gold_answers": [
+        "Harare"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 39,
+      "question": "Who is the developer of SteamOS?",
+      "gold_answers": [
+        "ABB Group"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 40,
+      "question": "Which city is the headquarter of University of Bucharest located in?",
+      "gold_answers": [
+        "Ankara"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 41,
+      "question": "Which sport is wide receiver associated with?",
+      "gold_answers": [
+        "rugby"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 42,
+      "question": "What position does Hines Ward play?",
+      "gold_answers": [
+        "cornerback"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 43,
+      "question": "What is the capital of Australia?",
+      "gold_answers": [
+        "Oderzo"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 44,
+      "question": "Which continent is Malaysia located in?",
+      "gold_answers": [
+        "Antarctica"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 45,
+      "question": "Who is the author of A Wizard of Earthsea?",
+      "gold_answers": [
+        "Pius XII"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 46,
+      "question": "Who performed Free as a Bird?",
+      "gold_answers": [
+        "The Beatles"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 47,
+      "question": "Who is the author of Our Mutual Friend?",
+      "gold_answers": [
+        "Charles Darwin"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 48,
+      "question": "Which country was basketball created in?",
+      "gold_answers": [
+        "Soviet Union"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 49,
+      "question": "What is the country of citizenship of Hal Needham?",
+      "gold_answers": [
+        "United States of America"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 50,
+      "question": "Which continent is Bengaluru located in?",
+      "gold_answers": [
+        "Oceania"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 51,
+      "question": "Which sport is Slovakia national football team associated with?",
+      "gold_answers": [
+        "cricket"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 52,
+      "question": "What is the name of the current head of state in United States of America?",
+      "gold_answers": [
+        "Connachta"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 53,
+      "question": "Which religion is Imelda Marcos affiliated with?",
+      "gold_answers": [
+        "atheism"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 54,
+      "question": "What type of music does Dana International play?",
+      "gold_answers": [
+        "Australian hip hop"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 55,
+      "question": "What is the country of citizenship of Sable?",
+      "gold_answers": [
+        "Czech Republic"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 56,
+      "question": "Which country was Charlie Hebdo created in?",
+      "gold_answers": [
+        "Italy"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 57,
+      "question": "Who is Elvis Presley married to?",
+      "gold_answers": [
+        "Charles the Bold"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 58,
+      "question": "Who performed Hermione Granger?",
+      "gold_answers": [
+        "Kylie Minogue"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 59,
+      "question": "Which sport is Bo Ryan associated with?",
+      "gold_answers": [
+        "association football"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 60,
+      "question": "What type of music does John McVie play?",
+      "gold_answers": [
+        "rap rock"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 61,
+      "question": "What position does Rog\u00e9rio Ceni play?",
+      "gold_answers": [
+        "flanker"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 62,
+      "question": "Who is the chief executive officer of Twitter?",
+      "gold_answers": [
+        "Bernard Arnault"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 63,
+      "question": "What language does Kylie Minogue speak?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 64,
+      "question": "Which sport is Darryl Strawberry associated with?",
+      "gold_answers": [
+        "baseball"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 65,
+      "question": "Which sport is placekicker associated with?",
+      "gold_answers": [
+        "rugby"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 66,
+      "question": "What kind of work does Stephen McNeil do?",
+      "gold_answers": [
+        "journalist"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 67,
+      "question": "Who is the employer of Dave Filoni?",
+      "gold_answers": [
+        "British Broadcasting Corporation"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 68,
+      "question": "Which continent is San Francisco located in?",
+      "gold_answers": [
+        "North America"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 69,
+      "question": "Where was Canadair founded?",
+      "gold_answers": [
+        "Tucson"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 70,
+      "question": "Which company is AP1000 produced by?",
+      "gold_answers": [
+        "Canadair"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 71,
+      "question": "What is the country of citizenship of Ayumi Hamasaki?",
+      "gold_answers": [
+        "Japan"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 72,
+      "question": "What position does Blair Walsh play?",
+      "gold_answers": [
+        "placekicker"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 73,
+      "question": "Who is Tony Blair married to?",
+      "gold_answers": [
+        "Alan Jay Lerner"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 74,
+      "question": "Who is the author of Endymion?",
+      "gold_answers": [
+        "John Keats"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 75,
+      "question": "Who is the author of Lady Windermere's Fan?",
+      "gold_answers": [
+        "Oscar Wilde"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 76,
+      "question": "What is the name of the current head of the Japan government?",
+      "gold_answers": [
+        "Shinz\u014d Abe"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 77,
+      "question": "Who is the chairperson of Congolese Party of Labour?",
+      "gold_answers": [
+        "Stephen McNeil"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 78,
+      "question": "Which sport is flanker associated with?",
+      "gold_answers": [
+        "rugby union"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 79,
+      "question": "What is the capital of Czech Republic?",
+      "gold_answers": [
+        "Prague"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 80,
+      "question": "What position does Lisa Leslie play?",
+      "gold_answers": [
+        "goaltender"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 81,
+      "question": "What is the name of the current head of state in Soviet Union?",
+      "gold_answers": [
+        "Elizabeth II"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 82,
+      "question": "What is the country of citizenship of Ferdinand von Richthofen?",
+      "gold_answers": [
+        "Canada"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 83,
+      "question": "Which religion is Karen Armstrong affiliated with?",
+      "gold_answers": [
+        "Church of Scotland"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 84,
+      "question": "Who was Vito Corleone created by?",
+      "gold_answers": [
+        "Nobuhiro Watsuki"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 85,
+      "question": "What is the capital of Romania?",
+      "gold_answers": [
+        "Rajanpur"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 86,
+      "question": "Which continent is India located in?",
+      "gold_answers": [
+        "Africa"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 87,
+      "question": "Which city did Olga of Kiev die in?",
+      "gold_answers": [
+        "Rodez"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 88,
+      "question": "Who founded Sasanian Empire?",
+      "gold_answers": [
+        "Walter Chrysler"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 89,
+      "question": "Which city did Pedro Pierluisi work in?",
+      "gold_answers": [
+        "Washington, D.C."
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 90,
+      "question": "Which sport is Surrey Senior Cup associated with?",
+      "gold_answers": [
+        "basketball"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 91,
+      "question": "What is the country of citizenship of Narendra Modi?",
+      "gold_answers": [
+        "Australia"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 92,
+      "question": "Who is Victoria Beckham married to?",
+      "gold_answers": [
+        "David Beckham"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 93,
+      "question": "What is the country of citizenship of Charles Messier?",
+      "gold_answers": [
+        "Iran"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 94,
+      "question": "Who was Rand al'Thor created by?",
+      "gold_answers": [
+        "Ferdowsi"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 95,
+      "question": "What position does Mike D'Antoni play?",
+      "gold_answers": [
+        "point guard"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 96,
+      "question": "What is the country of citizenship of Colin Irwin?",
+      "gold_answers": [
+        "Israel"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 97,
+      "question": "Who is Walter Chrysler's child?",
+      "gold_answers": [
+        "Charles Frederick, Duke of Holstein-Gottorp"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 98,
+      "question": "Who is Charles Darwin married to?",
+      "gold_answers": [
+        "Amala Paul"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-sh-0000-1778519987",
+      "dataset_id": "sf-sh",
+      "q_idx": 99,
+      "question": "What position does Irving Fryar play?",
+      "gold_answers": [
+        "wide receiver"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 0,
+      "question": "What is the country of citizenship of the spouse of the author of Our Mutual Friend?",
+      "gold_answers": [
+        "Belgium"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 1,
+      "question": "In which location did the spouse of Igor of Kiev pass away?",
+      "gold_answers": [
+        "Rodez"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 2,
+      "question": "Which country is the birthplace of the sport associated with Steve Sax?",
+      "gold_answers": [
+        "Italy"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 3,
+      "question": "Which city serves as the capital of the country of origin for the sport of the Tunisia national football team?",
+      "gold_answers": [
+        "Russellville"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 4,
+      "question": "What is the sport that Blair Walsh plays in which he is known for his position on the team?",
+      "gold_answers": [
+        "rugby"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 5,
+      "question": "What is the name of the educational institution where the partner of Nicolae Ceau\u0219escu was educated?",
+      "gold_answers": [
+        "Baldwin Wallace University"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 6,
+      "question": "Which country does the current CEO of Twitter hold citizenship of?",
+      "gold_answers": [
+        "France"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 7,
+      "question": "On which continent was the place of birth of Thomas Arne located?",
+      "gold_answers": [
+        "Oceania"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 8,
+      "question": "To which continent does the country of citizenship of Colin Irwin pertain?",
+      "gold_answers": [
+        "North America"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 9,
+      "question": "What is the location of work of the founder of the religion to which John Walsh belongs?",
+      "gold_answers": [
+        "Berlin"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 10,
+      "question": "What is the religious affiliation of the person who founded the Transcendental Meditation movement?",
+      "gold_answers": [
+        "atheism"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 11,
+      "question": "What was the religion of the person with the citizenship of the country to which Edmund Burke belonged?",
+      "gold_answers": [
+        "Zoroastrianism"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 12,
+      "question": "What is the capital city of the country where the sport associated with John Harkes has its origin?",
+      "gold_answers": [
+        "Duluth"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 13,
+      "question": "Which faith is the partner of Laura Bush associated with?",
+      "gold_answers": [
+        "Anglicanism"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 14,
+      "question": "What was the name of the head of state in the country where Andrew Carnegie was a citizen?",
+      "gold_answers": [
+        "Emmerson Mnangagwa"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 15,
+      "question": "From which capital city did the Surrey Senior Cup, a sports competition, originate?",
+      "gold_answers": [
+        "Russellville"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 16,
+      "question": "From which country does the sport, with which Carlos G\u00f3mez is associated, come from?",
+      "gold_answers": [
+        "Soviet Union"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 17,
+      "question": "In which city is the capital of the country where Madame du Barry held a citizenship?",
+      "gold_answers": [
+        "London"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 18,
+      "question": "What is the job title of the chairperson of the political organization Fatah?",
+      "gold_answers": [
+        "soldier"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 19,
+      "question": "Which city is the capital of the country where the performer of \"Free as a Bird\"'s director/manager comes from?",
+      "gold_answers": [
+        "Duluth"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 20,
+      "question": "What is the language of the work that was created by the individual who created Rand al'Thor?",
+      "gold_answers": [
+        "Persian"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 21,
+      "question": "What is the work location of the person who founded the religion Karen Armstrong belongs to?",
+      "gold_answers": [
+        "Edinburgh"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 22,
+      "question": "What is the name of the child category of \"Categories\" created by the author?",
+      "gold_answers": [
+        "George Alexander Kohut"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 23,
+      "question": "Where is the country of origin of FC Vorskla Poltava?",
+      "gold_answers": [
+        "Soviet Union"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 24,
+      "question": "Which city is the capital of the country where the CEO of the developer of SteamOS holds a citizenship?",
+      "gold_answers": [
+        "Harare"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 25,
+      "question": "What is the name of the person who is the chief executive officer of the developer of F-22 Raptor?",
+      "gold_answers": [
+        "Adel al-Jubeir"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 26,
+      "question": "Who holds the position of chairperson in the organization where Joseph Story was employed?",
+      "gold_answers": [
+        "Peter Diamandis"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 27,
+      "question": "What city serves as the capital of the country where the performer who is the spouse of Derek Shepherd holds citizenship?",
+      "gold_answers": [
+        "Harrisville"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 28,
+      "question": "What is the name of the city that serves as the capital of the country to which Sable belongs?",
+      "gold_answers": [
+        "Prague"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 29,
+      "question": "In which city serves as the capital of the country of citizenship of Country Joe McDonald?",
+      "gold_answers": [
+        "Rajanpur"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 30,
+      "question": "What city or town is the headquarters of the educational institution, where the performer of the album \"Blood on the Tracks\" received education, located in?",
+      "gold_answers": [
+        "New York City"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 31,
+      "question": "What is the name of the chief executive of the country where the sport associated with Bo Ryan was first developed?",
+      "gold_answers": [
+        "Giuseppe Conte"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 32,
+      "question": "What is the continent of origin of the chief executive officer for the developer of Windows Phone?",
+      "gold_answers": [
+        "North America"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 33,
+      "question": "Which continent does the country where the sport played by the Slovakia national football team originated come from?",
+      "gold_answers": [
+        "South America"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 34,
+      "question": "Which religion was the partner of Ferdinand Marcos associated with?",
+      "gold_answers": [
+        "atheism"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 35,
+      "question": "What is the name of the significant creation associated with the creator of Vito Corleone?",
+      "gold_answers": [
+        "The Fairly OddParents"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 36,
+      "question": "To which country does the performer who goes by the name Rocket Man hold citizenship?",
+      "gold_answers": [
+        "Japan"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 37,
+      "question": "Which language does the performer of Hermione Granger know how to speak, write or sign?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 38,
+      "question": "From which country does the musical genre Michael Mantler is associated with come from?",
+      "gold_answers": [
+        "Canada"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 39,
+      "question": "Which sport is associated with the position played by Robert Parish on a team or his specialty?",
+      "gold_answers": [
+        "Muay Thai"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 40,
+      "question": "What is the name of the person who founded the organization that Benjamin Mazar was part of?",
+      "gold_answers": [
+        "Philippe, Duke of Orl\u00e9ans"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 41,
+      "question": "Which language is recognized as the official language of the place where Gennady Rozhdestvensky took his last breath?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 42,
+      "question": "What is the birthplace of the author of \"The Marriage of Figaro\"?",
+      "gold_answers": [
+        "Leeds"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 43,
+      "question": "In which country was Darryl Strawberry's sport developed, and who is the head of government in that nation?",
+      "gold_answers": [
+        "Shinz\u014d Abe"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 44,
+      "question": "Which city serves as the capital of the country where the sport that Mike D'Antoni specialized in hails from?",
+      "gold_answers": [
+        "London"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 45,
+      "question": "At what location did the author of \"Sketches by Boz\" breathe his last?",
+      "gold_answers": [
+        "London"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 46,
+      "question": "What is the capital city of the country from which the sport of Daniele De Rossi originated?",
+      "gold_answers": [
+        "Tokyo"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 47,
+      "question": "To which continent is the country of citizenship of Ferdinand von Richthofen located?",
+      "gold_answers": [
+        "Asia"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 48,
+      "question": "In which city is the capital of the country where the sport played by Galwegians RFC was originated?",
+      "gold_answers": [
+        "Grosseto"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 49,
+      "question": "What languages are spoken, written or signed by the founder of Shingon Buddhism?",
+      "gold_answers": [
+        "Latin"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 50,
+      "question": "What is the place of death of the partner of the head of government of the Council of People's Commissars?",
+      "gold_answers": [
+        "Mansourah, Algeria"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 51,
+      "question": "What is the professional role of the chairperson of the Congolese Party of Labour?",
+      "gold_answers": [
+        "journalist"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 52,
+      "question": "Where did the religion associated with the Bagratuni Dynasty come into existence?",
+      "gold_answers": [
+        "Taipei"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 53,
+      "question": "What country does the genre of music associated with the spouse of Roy Rogers originate from?",
+      "gold_answers": [
+        "Russian Empire"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 54,
+      "question": "In which city is the capital located of the country where the director/producer of \"666 Park Avenue\" is a citizen?",
+      "gold_answers": [
+        "Beaumont"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 55,
+      "question": "In what place was the organization that Ron Dennis works for, first established?",
+      "gold_answers": [
+        "Sweden"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 56,
+      "question": "On which continent was Le Petit Parisien originally made?",
+      "gold_answers": [
+        "Africa"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 57,
+      "question": "Which city serves as the capital city of the country where the sport played by the partner of Victoria Beckham originated?",
+      "gold_answers": [
+        "Oderzo"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 58,
+      "question": "What is the name of the political entity that was established from the successor of the Sasanian Empire?",
+      "gold_answers": [
+        "Charles Frederick, Duke of Holstein-Gottorp"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 59,
+      "question": "In which city is the capital of the country that FC Irtysh Omsk originates from located?",
+      "gold_answers": [
+        "Duluth"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 60,
+      "question": "What is the place of death of the performer of the song collection \"Back to Black\"?",
+      "gold_answers": [
+        "Berlin"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 61,
+      "question": "What was the sport that Hines Ward competed in professionally?",
+      "gold_answers": [
+        "field hockey"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 62,
+      "question": "In which position did the person related to the original broadcaster of \"The Brady Bunch\" serve?",
+      "gold_answers": [
+        "Ernst Heinkel"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 63,
+      "question": "In what location did the person who founded Chanel pass away?",
+      "gold_answers": [
+        "Montm\u00e9lian"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 64,
+      "question": "What is the country of citizenship of the author of \"Starship Troopers\"?",
+      "gold_answers": [
+        "United Kingdom"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 65,
+      "question": "Which individual holds the position of director/manager at the company that employs Dave Filoni?",
+      "gold_answers": [
+        "Narendra Modi"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 66,
+      "question": "In what language is the notable work associated with Hugh Hefner written?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 67,
+      "question": "Which city serves as the capital of the country that gave rise to the sport played by Rog\u00e9rio Ceni?",
+      "gold_answers": [
+        "New Delhi"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 68,
+      "question": "From which educational institution did the author of 'Sidereus Nuncius' receive their education?",
+      "gold_answers": [
+        "University of Southern California"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 69,
+      "question": "What is the place of death of the author of Endymion?",
+      "gold_answers": [
+        "Leipzig"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 70,
+      "question": "In which city can the headquarters of the educational institution attended by the spouse of Sophia Hawthorne be found?",
+      "gold_answers": [
+        "Botevgrad"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 71,
+      "question": "What is the name of the chief of state of the country where Leo Stein holds citizenship?",
+      "gold_answers": [
+        "Connachta"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 72,
+      "question": "What is the name of the chief of state of the country that Hal Needham belongs to?",
+      "gold_answers": [
+        "Connachta"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 73,
+      "question": "Who serves as the head of government in the location where the AP1000 was made by its manufacturer?",
+      "gold_answers": [
+        "Jonathan Rothschild"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 74,
+      "question": "In what place did the author of \"A Wizard of Earthsea\" breathe his last?",
+      "gold_answers": [
+        "Wolverhampton"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 75,
+      "question": "Which religion does the partner of the performer of \"Aladdin Sane\" follow?",
+      "gold_answers": [
+        "interdenominational organization"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 76,
+      "question": "At which location does the Prime Minister of Sweden spend most of their work hours?",
+      "gold_answers": [
+        "Washington, D.C."
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 77,
+      "question": "What is the capital city of the country whose citizenship is held by the CEO of the developer of AppleScript?",
+      "gold_answers": [
+        "Rome"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 78,
+      "question": "Which continent is the country of origin for Gala RFC located in?",
+      "gold_answers": [
+        "Africa"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 79,
+      "question": "What sport is associated with the position played by Irving Fryar on a team/specialty?",
+      "gold_answers": [
+        "rugby"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 80,
+      "question": "In which continent is the country to which C\u00e9dric Klapisch holds citizenship located?",
+      "gold_answers": [
+        "Antarctica"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 81,
+      "question": "What is the location of the headquarters of the company where Leonte R\u0103utu worked?",
+      "gold_answers": [
+        "Ankara"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 82,
+      "question": "To whom does the head of government of the country of origin of Club Nouveau report to?",
+      "gold_answers": [
+        "Elizabeth II"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 83,
+      "question": "Which individual is responsible for founding the organization that has its headquarters in the same location where Bill Frisell received his education?",
+      "gold_answers": [
+        "William Penn"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 84,
+      "question": "In which city of the country where Charles Messier held citizenship is the capital located?",
+      "gold_answers": [
+        "Tehran"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 85,
+      "question": "Which country does the sportsperson who specializes in Lisa Leslie's position originally come from?",
+      "gold_answers": [
+        "Philippines"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 86,
+      "question": "What is the name of the capital city of the country where the founder of the manufacturer of Ford F-Series hailed from?",
+      "gold_answers": [
+        "New Delhi"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 87,
+      "question": "Which city serves as the capital of the country where the sport that Sandy Alderson is associated with originated?",
+      "gold_answers": [
+        "Duluth"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 88,
+      "question": "Which language is the official language of the country whose citizenship is held by the director/manager of \"Past Masters\"?",
+      "gold_answers": [
+        "Arabic"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 89,
+      "question": "Which nation is the birthplace of the sport that features the split-finger fastball?",
+      "gold_answers": [
+        "Australia"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 90,
+      "question": "In which languages can the author of \"The Witcher\" write, speak, or sign?",
+      "gold_answers": [
+        "French"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 91,
+      "question": "In which city is the capital of the country, where the book \"The Birth of Tragedy\" first came from, located?",
+      "gold_answers": [
+        "Duluth"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 92,
+      "question": "In what language are communications in the headquarters location of the manufacturer of Il-2 Shturmovik conducted officially?",
+      "gold_answers": [
+        "German"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 93,
+      "question": "Which city serves as the capital of the country where the spouse of the performer of \"Viva Las Vegas\" is a citizen?",
+      "gold_answers": [
+        "Harare"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 94,
+      "question": "What is the country of origin of the sport that the New Firm is related to?",
+      "gold_answers": [
+        "Japan"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 95,
+      "question": "Which religious leader is responsible for founding the religion to which Sarit Thanarat belongs?",
+      "gold_answers": [
+        "Mekere Morauta"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 96,
+      "question": "At which place did the creator of \"Lady Windermere's Fan\" breathe their last?",
+      "gold_answers": [
+        "Guangzhou"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 97,
+      "question": "what kind of music does \"Born in the U.S.A.\" fall under according to its performer?",
+      "gold_answers": [
+        "Australian hip hop"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 98,
+      "question": "What is the capital city of the country where the founder of the manufacturer of Ford Transit Connect holds citizenship?",
+      "gold_answers": [
+        "Paris"
+      ],
+      "correct": false,
+      "result_count": 20,
+      "facts_ingested": 446
+    },
+    {
+      "row_id": "mabench-sf-mh-0000-1778520001",
+      "dataset_id": "sf-mh",
+      "q_idx": 99,
+      "question": "In what language are the official documents of the country where Alta IF originates written?",
+      "gold_answers": [
+        "Swedish"
+      ],
+      "correct": true,
+      "result_count": 20,
+      "facts_ingested": 446
+    }
+  ]
+}

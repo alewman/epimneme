@@ -1,0 +1,29 @@
+Engram — Persistent Memory for AI Coding Agents
+Copyright 2026 Alewman
+
+This product includes software developed by Alewman and contributors,
+with design and implementation assistance from Anthropic's Claude
+(GitHub Copilot / Claude Code).
+
+Licensed under the Apache License, Version 2.0. See LICENSE for details.
+
+-------------------------------------------------------------------------
+Third-party components used at runtime (each under their own license):
+
+  * FastAPI (MIT)                  — https://github.com/tiangolo/fastapi
+  * Uvicorn (BSD-3-Clause)         — https://github.com/encode/uvicorn
+  * MCP Python SDK (MIT)           — https://github.com/modelcontextprotocol/python-sdk
+  * psycopg (LGPL-3.0-or-later)    — https://github.com/psycopg/psycopg
+  * Pydantic (MIT)                 — https://github.com/pydantic/pydantic
+  * sentence-transformers (Apache-2.0) — https://github.com/UKPLab/sentence-transformers
+  * FlashRank (Apache-2.0)         — https://github.com/PrithivirajDamodaran/FlashRank
+  * PostgreSQL (PostgreSQL License)— https://www.postgresql.org
+  * pgvector (PostgreSQL License)  — https://github.com/pgvector/pgvector
+  * httpx (BSD-3-Clause)           — https://github.com/encode/httpx
+
+-------------------------------------------------------------------------
+Benchmark datasets (not redistributed; fetched by benchmarks/download_data.sh):
+
+  * LongMemEval — Xiao et al., 2024.  https://github.com/xiaowu0162/LongMemEval
+  * LoCoMo      — Snap Research, 2024. https://github.com/snap-research/locomo
+                  (LoCoMo is licensed CC BY-NC 4.0 — research use only.)

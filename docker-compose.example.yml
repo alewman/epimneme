@@ -1,0 +1,94 @@
+# Engram — Docker Compose Example
+#
+# Copy this file to docker-compose.yml (or use it as-is with `-f`):
+#
+#     cp docker-compose.example.yml docker-compose.yml
+#     docker compose up -d --build
+#
+# By default this starts Engram on http://localhost:8000, exposed only to the
+# host loopback interface. See the commented-out Traefik section at the bottom
+# for a production reverse-proxy setup.
+#
+# Required environment variables (set in .env — see .env.example):
+#   EPIMNEME_PG_PASSWORD   — PostgreSQL password for the engram user
+#   DOMAINNAME           — Your domain (only used by the commented Traefik labels)
+#   TZ                   — Timezone (e.g. America/Chicago)
+
+########################### SERVICES
+services:
+  # ── Engram — Persistent Memory for AI Agents ──
+  engram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: engram:latest
+    container_name: engram
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    depends_on:
+      epimneme-db:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      EPIMNEME_PG_HOST: epimneme-db
+      EPIMNEME_PG_PORT: 5432
+      EPIMNEME_PG_USER: engram
+      EPIMNEME_PG_PASSWORD: ${EPIMNEME_PG_PASSWORD}
+      EPIMNEME_PG_DATABASE: engram
+      EPIMNEME_EMBEDDING_MODEL: all-MiniLM-L6-v2
+    # Expose only on loopback by default. Remove or change to 8000:8000 to
+    # bind on all interfaces (and put a reverse proxy in front of it!).
+    ports:
+      - "127.0.0.1:8000:8000"
+    # ── Traefik labels — uncomment and adjust for production ──
+    # networks:
+    #   - proxy
+    # labels:
+    #   - "traefik.enable=true"
+    #   # Browser route — protect with your OAuth/SSO middleware
+    #   - "traefik.http.routers.engram-rtr.tls=true"
+    #   - "traefik.http.routers.engram-rtr.entrypoints=https"
+    #   - "traefik.http.routers.engram-rtr.rule=Host(`engram.${DOMAINNAME}`)"
+    #   - "traefik.http.routers.engram-rtr.middlewares=chain-oauth@file"
+    #   - "traefik.http.routers.engram-rtr.service=engram-svc"
+    #   - "traefik.http.services.engram-svc.loadbalancer.server.port=8000"
+    #   # API/SSE route — Bearer auth only, NO gzip (compression breaks SSE)
+    #   - "traefik.http.routers.engram-api-rtr.tls=true"
+    #   - "traefik.http.routers.engram-api-rtr.entrypoints=https"
+    #   - "traefik.http.routers.engram-api-rtr.rule=Host(`engram.${DOMAINNAME}`) && (PathPrefix(`/api`) || PathPrefix(`/sse`) || PathPrefix(`/messages`) || Path(`/health`))"
+    #   - "traefik.http.routers.engram-api-rtr.middlewares=chain-api@file"
+    #   - "traefik.http.routers.engram-api-rtr.service=engram-svc"
+    #   - "traefik.http.routers.engram-api-rtr.priority=100"
+
+  # ── PostgreSQL + pgvector ──
+  epimneme-db:
+    image: pgvector/pgvector:pg16
+    container_name: epimneme-db
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    volumes:
+      - epimneme-db-data:/var/lib/postgresql/data
+    environment:
+      TZ: ${TZ:-UTC}
+      POSTGRES_USER: engram
+      POSTGRES_PASSWORD: ${EPIMNEME_PG_PASSWORD}
+      POSTGRES_DB: engram
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engram"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+########################### VOLUMES
+volumes:
+  epimneme-db-data:
+    driver: local
+
+########################### NETWORKS
+# Uncomment if you use Traefik or another external proxy network.
+# networks:
+#   proxy:
+#     external: true

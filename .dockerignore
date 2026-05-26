@@ -1,0 +1,10 @@
+db-data/
+tests/
+scripts/
+*.bak
+*.pyc
+__pycache__/
+.git/
+.pytest_cache/
+.env
+*.egg-info/
