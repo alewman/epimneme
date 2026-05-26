@@ -1,13 +1,15 @@
-# Engram Benchmark Results — April 2026
+# Epimneme Benchmark Results — April 2026
 
-Engram evaluated on the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and [LoCoMo](https://github.com/snap-research/locomo) long-term-memory retrieval benchmarks.
+> **Note:** These benchmarks were collected when this project was called *Engram*. The project was subsequently renamed to *Epimneme* — the codebase and retrieval logic are identical. Result filenames and run logs retain the original `engram_` prefix as historical record.
+
+Epimneme evaluated on the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and [LoCoMo](https://github.com/snap-research/locomo) long-term-memory retrieval benchmarks.
 
 - **No benchmark-specific tuning.** Retrieval is general-purpose.
 - **No LLM reranking.** Zero per-query LLM cost.
 - **Production database state** for the first pass; clean-room re-run confirmed identical results.
 - Compared side-by-side to [MemPalace](https://github.com/Chessnl/mempalace) where their published numbers permit.
 
-> **Attribution.** LongMemEval and LoCoMo are third-party academic benchmarks. Engram does not redistribute the raw datasets — see [`DATA.md`](DATA.md) for where to fetch them. LoCoMo is licensed CC BY-NC 4.0; Engram's use of it is research-only.
+> **Attribution.** LongMemEval and LoCoMo are third-party academic benchmarks. Epimneme does not redistribute the raw datasets — see [`DATA.md`](DATA.md) for where to fetch them. LoCoMo is licensed CC BY-NC 4.0; Epimneme's use of it is research-only.
 
 > **Reproducibility.** The final run files are kept in this repository:
 > `results_engram_lme_rrf_final.jsonl` (LongMemEval) and
