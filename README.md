@@ -1,16 +1,18 @@
-# Engram
+# Epimneme
+
+> *From Greek: ἐπί (epi-, "upon") + μνήμη (mnēmē, "memory") — meta-memory, a layer that sits upon memory itself.*
 
 **Persistent memory for AI coding agents.** PostgreSQL + pgvector backend, accessed via MCP or REST. Stop re-explaining your codebase every session.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
-[![CI](https://github.com/alewman/engram/actions/workflows/ci.yml/badge.svg)](https://github.com/alewman/engram/actions)
+[![CI](https://github.com/alewman/epimneme/actions/workflows/ci.yml/badge.svg)](https://github.com/alewman/epimneme/actions)
 
 ---
 
-## Why Engram?
+## Why Epimneme?
 
-Every new chat with your coding agent starts from zero. You re-paste the same design decisions, re-explain the same gotchas, re-answer the same questions. Engram gives agents a long-term memory: facts, decisions, procedures, and a knowledge graph — all searchable, versioned, and deduplicated.
+Every new chat with your coding agent starts from zero. You re-paste the same design decisions, re-explain the same gotchas, re-answer the same questions. Epimneme gives agents a long-term memory: facts, decisions, procedures, and a knowledge graph — all searchable, versioned, and deduplicated.
 
 Agents connect via **MCP** (VS Code, Cursor, Claude Desktop, etc.) or through a plain **REST API**. Both use Bearer-token auth scoped per-project for multi-tenant safety.
 
@@ -18,8 +20,8 @@ Agents connect via **MCP** (VS Code, Cursor, Claude Desktop, etc.) or through a 
 
 On **LongMemEval** (500 questions, 6 question types) with **no LLM reranking** and **no benchmark-specific tuning**:
 
-| Metric | Engram (no LLM) |
-|--------|-----------------|
+| Metric | Epimneme (no LLM) |
+|--------|------------------|
 | Recall @ 1   | 79.0% |
 | Recall @ 5   | 96.0% |
 | Recall @ 10  | **98.8%** |
@@ -33,30 +35,30 @@ See [benchmarks/BENCHMARK_RESULTS.md](benchmarks/BENCHMARK_RESULTS.md) for the f
 
 ```bash
 # 1. Clone
-git clone https://github.com/alewman/engram.git
-cd engram
+git clone https://github.com/alewman/epimneme.git
+cd epimneme
 
 # 2. Configure
 cp .env.example .env
-# Edit .env — at minimum set ENGRAM_PG_PASSWORD to a strong value
+# Edit .env — at minimum set EPIMNEME_PG_PASSWORD to a strong value
 
-# 3. Bring up Postgres + Engram
+# 3. Bring up Postgres + Epimneme
 cp docker-compose.example.yml docker-compose.yml   # or edit in place
 docker compose up -d --build
 
 # 4. Wait for health, then create an admin API key
 curl http://localhost:8000/health
-docker exec engram python -m engram.manage create-key \
+docker exec epimneme python -m epimneme.manage create-key \
   --name admin --role admin
 
 # Save the key it prints — it will not be shown again.
 
 # 5. Create your first project
-docker exec engram python -m engram.manage create-project \
+docker exec epimneme python -m epimneme.manage create-project \
   --name my-project --description "My awesome project"
 ```
 
-Engram now listens on `http://localhost:8000`. See [Connecting an Agent](#connecting-an-agent) below.
+Epimneme now listens on `http://localhost:8000`. See [Connecting an Agent](#connecting-an-agent) below.
 
 ## Connecting an Agent
 
@@ -65,10 +67,10 @@ Engram now listens on `http://localhost:8000`. See [Connecting an Agent](#connec
 ```json
 {
   "mcpServers": {
-    "engram": {
+    "epimneme": {
       "url": "http://localhost:8000/sse",
       "headers": {
-        "Authorization": "Bearer engram_YOUR_KEY_HERE"
+        "Authorization": "Bearer epimneme_YOUR_KEY_HERE"
       }
     }
   }
@@ -91,7 +93,7 @@ Once connected, the agent sees these tools:
 ### curl
 
 ```bash
-curl -H "Authorization: Bearer engram_YOUR_KEY" \
+curl -H "Authorization: Bearer epimneme_YOUR_KEY" \
   "http://localhost:8000/api/memories/search?query=database+config&project=my-project"
 ```
 
@@ -161,13 +163,13 @@ Full details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Configuration
 
-All settings are environment variables (`ENGRAM_*`). See [.env.example](.env.example) and the **Configuration** section of [ARCHITECTURE.md](ARCHITECTURE.md#configuration) for the full list.
+All settings are environment variables (`EPIMNEME_*`). See [.env.example](.env.example) and the **Configuration** section of [ARCHITECTURE.md](ARCHITECTURE.md#configuration) for the full list.
 
 Minimum required:
 
 | Variable | Notes |
 |---|---|
-| `ENGRAM_PG_PASSWORD` | Must not be the literal string `engram`. The server refuses to start otherwise. |
+| `EPIMNEME_PG_PASSWORD` | Must not be the literal string `epimneme`. The server refuses to start otherwise. |
 
 ## Deploying Behind a Reverse Proxy
 
@@ -204,6 +206,6 @@ Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ## Credits
 
 - **Author & maintainer**: [Alewman](https://github.com/alewman)
-- **Design & implementation assistance**: Anthropic's **Claude** (via GitHub Copilot Chat and Claude Code). Large portions of the code, tests, migrations, reranking, and documentation were authored in close collaboration with Claude across many sessions — many of which Engram itself made possible by persisting the context.
+- **Design & implementation assistance**: Anthropic's **Claude** (via GitHub Copilot Chat and Claude Code). Large portions of the code, tests, migrations, reranking, and documentation were authored in close collaboration with Claude across many sessions — many of which Epimneme itself made possible by persisting the context.
 - Built on FastAPI, PostgreSQL + pgvector, sentence-transformers, FlashRank, and the Model Context Protocol.
 - Benchmarked against [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and [LoCoMo](https://github.com/snap-research/locomo); compared to [MemPalace](https://github.com/Chessnl/mempalace).

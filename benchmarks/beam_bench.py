@@ -54,7 +54,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
 
-from engram_client import EngramClient
+from epimneme_client import EngramClient
 
 # ── HuggingFace dataset IDs ───────────────────────────────────────────────────
 HF_DATASET = "Mohammadta/BEAM"

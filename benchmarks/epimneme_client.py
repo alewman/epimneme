@@ -1,6 +1,6 @@
 """Engram REST API client for benchmarking.
 
-Thin async wrapper around engram's HTTP API. Handles:
+Thin async wrapper around epimneme's HTTP API. Handles:
   - Memory creation (single + bulk)
   - Search (with project scoping)
   - Project creation and cleanup
@@ -38,7 +38,7 @@ async def _with_retry(coro_fn):
 
 @dataclass
 class EngramClient:
-    """Async client for engram's REST API."""
+    """Async client for epimneme's REST API."""
 
     base_url: str = "http://localhost:8000"
     token: str = ""

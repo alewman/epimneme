@@ -5,7 +5,7 @@ They create a separate 'epimneme_test' database, exercise real SQL (including
 pgvector + pg_trgm), and tear down afterwards.
 
 To run:
-    docker exec engram python -m pytest tests/test_integration.py -x -v
+    docker exec epimneme python -m pytest tests/test_integration.py -x -v
 
 Skipped automatically when PG is unreachable (e.g. running locally).
 """

@@ -34,6 +34,10 @@ benchmarks/data/**
 !benchmarks/data/
 !benchmarks/data/test_*_fixture.json
 
-# Benchmark run logs and tuning sweeps
+# Benchmark run logs, raw result files, and tuning sweeps
 benchmarks/*.log
+benchmarks/results_*.json
+benchmarks/results_*.jsonl
+benchmarks/results_*.tsv
+benchmarks/near_miss_analysis*.txt
 benchmarks/sweep*

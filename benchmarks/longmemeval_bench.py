@@ -35,7 +35,7 @@ from datetime import datetime
 # Add benchmarks to path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from engram_client import EngramClient
+from epimneme_client import EngramClient
 from metrics import evaluate_retrieval, session_id_from_corpus_id
 
 

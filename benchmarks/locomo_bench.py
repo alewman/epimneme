@@ -37,7 +37,7 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from engram_client import EngramClient
+from epimneme_client import EngramClient
 
 CATEGORIES = {
     1: "Single-hop",
