@@ -1,6 +1,6 @@
 # Epimneme
 
-> *From Greek: ἐπί (epi-, "upon") + μνήμη (mnēmē, "memory") — meta-memory, a layer that sits upon memory itself.*
+> *Pronounced **ep-im-NEE-mee**. From Greek: ἐπί (epi-, "upon") + μνήμη (mnēmē, "memory") — meta-memory, a layer that sits upon memory itself.*
 
 **Persistent memory for AI coding agents.** PostgreSQL + pgvector backend, accessed via MCP or REST. Stop re-explaining your codebase every session.
 
