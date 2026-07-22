@@ -49,6 +49,24 @@ def evaluate_retrieval(
     return recall_any, recall_all, ndcg_score
 
 
+def evidence_completeness(
+    ranked_ids: list[str], correct_ids: set[str], k: int
+) -> float:
+    """Fraction of gold-answer IDs present in the top-k results.
+
+    Unlike recall_all (all-or-nothing), this is a continuous measure of how
+    much of the required evidence is actually present — useful for diagnosing
+    multi-answer question types (e.g. LongMemEval's multi-session/counting
+    questions) where recall_any@k can be 1.0 while most of the evidence
+    needed to answer correctly is still missing.
+    """
+    if not correct_ids:
+        return 1.0
+    top_k_ids = set(ranked_ids[:k])
+    found = sum(1 for cid in correct_ids if cid in top_k_ids)
+    return found / len(correct_ids)
+
+
 # ── Text metrics ─────────────────────────────────────────────────────────
 
 

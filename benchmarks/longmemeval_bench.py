@@ -36,7 +36,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent))
 
 from epimneme_client import EngramClient
-from metrics import evaluate_retrieval, session_id_from_corpus_id
+from metrics import evaluate_retrieval, evidence_completeness, session_id_from_corpus_id
 
 
 # =============================================================================
@@ -291,9 +291,11 @@ async def process_question(
         turn_metrics = {}
         for k in ks:
             ra, rl, nd = evaluate_retrieval(session_level_ids, session_correct, k)
-            session_metrics[k] = (ra, rl, nd)
+            ec = evidence_completeness(session_level_ids, session_correct, k)
+            session_metrics[k] = (ra, rl, nd, ec)
             ra_t, rl_t, nd_t = evaluate_retrieval(ranked_ids, turn_correct, k)
-            turn_metrics[k] = (ra_t, rl_t, nd_t)
+            ec_t = evidence_completeness(ranked_ids, turn_correct, k)
+            turn_metrics[k] = (ra_t, rl_t, nd_t, ec_t)
 
         ranked_items = []
         for cid in ranked_ids[:50]:
@@ -337,8 +339,18 @@ async def process_question(
                 "query": question,
                 "ranked_items": ranked_items,
                 "metrics": {
-                    "session": {f"recall_any@{k}": session_metrics[k][0] for k in ks},
-                    "turn": {f"recall_any@{k}": turn_metrics[k][0] for k in ks},
+                    "session": {
+                        **{f"recall_any@{k}": session_metrics[k][0] for k in ks},
+                        **{f"recall_all@{k}": session_metrics[k][1] for k in ks},
+                        **{f"ndcg_any@{k}": session_metrics[k][2] for k in ks},
+                        **{f"evidence_completeness@{k}": session_metrics[k][3] for k in ks},
+                    },
+                    "turn": {
+                        **{f"recall_any@{k}": turn_metrics[k][0] for k in ks},
+                        **{f"recall_all@{k}": turn_metrics[k][1] for k in ks},
+                        **{f"ndcg_any@{k}": turn_metrics[k][2] for k in ks},
+                        **{f"evidence_completeness@{k}": turn_metrics[k][3] for k in ks},
+                    },
                 },
             },
         }
@@ -420,10 +432,12 @@ async def run_benchmark(
     metrics_session = {f"recall_any@{k}": [] for k in ks}
     metrics_session.update({f"recall_all@{k}": [] for k in ks})
     metrics_session.update({f"ndcg_any@{k}": [] for k in ks})
+    metrics_session.update({f"evidence_completeness@{k}": [] for k in ks})
 
     metrics_turn = {f"recall_any@{k}": [] for k in ks}
     metrics_turn.update({f"recall_all@{k}": [] for k in ks})
     metrics_turn.update({f"ndcg_any@{k}": [] for k in ks})
+    metrics_turn.update({f"evidence_completeness@{k}": [] for k in ks})
 
     per_type: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     results_log = []
@@ -438,20 +452,24 @@ async def run_benchmark(
         qtype = qr["question_type"]
 
         for k in ks:
-            ra, rl, nd = qr["session_metrics"][k]
+            ra, rl, nd, ec = qr["session_metrics"][k]
             metrics_session[f"recall_any@{k}"].append(ra)
             metrics_session[f"recall_all@{k}"].append(rl)
             metrics_session[f"ndcg_any@{k}"].append(nd)
+            metrics_session[f"evidence_completeness@{k}"].append(ec)
 
-            ra_t, rl_t, nd_t = qr["turn_metrics"][k]
+            ra_t, rl_t, nd_t, ec_t = qr["turn_metrics"][k]
             metrics_turn[f"recall_any@{k}"].append(ra_t)
             metrics_turn[f"recall_all@{k}"].append(rl_t)
             metrics_turn[f"ndcg_any@{k}"].append(nd_t)
+            metrics_turn[f"evidence_completeness@{k}"].append(ec_t)
 
         per_type[qtype]["recall_any@1"].append(qr["session_metrics"][1][0])
         per_type[qtype]["recall_any@5"].append(qr["session_metrics"][5][0])
         per_type[qtype]["recall_any@10"].append(qr["session_metrics"][10][0])
+        per_type[qtype]["recall_all@10"].append(qr["session_metrics"][10][1])
         per_type[qtype]["ndcg_any@10"].append(qr["session_metrics"][10][2])
+        per_type[qtype]["evidence_completeness@10"].append(qr["session_metrics"][10][3])
 
         results_log.append({
             "question_id": qr["question_id"],
@@ -481,21 +499,27 @@ async def run_benchmark(
     print("  SESSION-LEVEL METRICS:")
     for k in ks:
         ra = sum(metrics_session[f"recall_any@{k}"]) / n
+        rl = sum(metrics_session[f"recall_all@{k}"]) / n
         nd = sum(metrics_session[f"ndcg_any@{k}"]) / n
-        print(f"    Recall@{k:2}: {ra:.3f}    NDCG@{k:2}: {nd:.3f}")
+        ec = sum(metrics_session[f"evidence_completeness@{k}"]) / n
+        print(f"    Recall@{k:2}: {ra:.3f}    RecallAll@{k:2}: {rl:.3f}    NDCG@{k:2}: {nd:.3f}    EvidenceCompleteness@{k:2}: {ec:.3f}")
 
     print("\n  TURN-LEVEL METRICS:")
     for k in ks:
         ra = sum(metrics_turn[f"recall_any@{k}"]) / n
+        rl = sum(metrics_turn[f"recall_all@{k}"]) / n
         nd = sum(metrics_turn[f"ndcg_any@{k}"]) / n
-        print(f"    Recall@{k:2}: {ra:.3f}    NDCG@{k:2}: {nd:.3f}")
+        ec = sum(metrics_turn[f"evidence_completeness@{k}"]) / n
+        print(f"    Recall@{k:2}: {ra:.3f}    RecallAll@{k:2}: {rl:.3f}    NDCG@{k:2}: {nd:.3f}    EvidenceCompleteness@{k:2}: {ec:.3f}")
 
-    print("\n  PER-TYPE BREAKDOWN (session recall_any@1 / @10):")
+    print("\n  PER-TYPE BREAKDOWN (session recall_any@1 / @10, recall_all@10, evidence_completeness@10):")
     for qtype, vals in sorted(per_type.items()):
         r1 = sum(vals["recall_any@1"]) / len(vals["recall_any@1"])
         r10 = sum(vals["recall_any@10"]) / len(vals["recall_any@10"])
+        rl10 = sum(vals["recall_all@10"]) / len(vals["recall_all@10"])
+        ec10 = sum(vals["evidence_completeness@10"]) / len(vals["evidence_completeness@10"])
         count = len(vals["recall_any@10"])
-        print(f"    {qtype:35} R@1={r1:.3f}  R@10={r10:.3f}  (n={count})")
+        print(f"    {qtype:35} R@1={r1:.3f}  R@10={r10:.3f}  RecallAll@10={rl10:.3f}  EvidenceCompleteness@10={ec10:.3f}  (n={count})")
 
     print(f"\n{'=' * 60}\n")
 

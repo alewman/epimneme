@@ -30,7 +30,7 @@ TAG=${2:-}
 shift 2 2>/dev/null || true
 EXTRA_ARGS=("$@")
 
-EPIMNEME_URL="${EPIMNEME_URL:-http://192.168.90.45:8000}"
+EPIMNEME_URL="${EPIMNEME_URL:-http://localhost:8000}"
 BENCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$BENCH_DIR/data"
 LOG_DIR="/tmp"
