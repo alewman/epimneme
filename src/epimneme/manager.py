@@ -50,6 +50,7 @@ from epimneme.fusion import (
     rrf_fuse,
     session_recency_rank,
     temporal_hard_filter,
+    temporal_partition,
     turn_pair_rank,
 )
 from epimneme.rerank import keyword_rerank
@@ -624,6 +625,7 @@ class MemoryManager:
          10. Gap-aware deterministic tiebreaker (if enabled).
          11. Temporal hard-filter (if enabled + day-precision date resolved).
          12. Sort, truncate, fire decay updates.
+         13. Temporal partition rerank (structural, day-precision only).
         """
         project_id = None
         if project_name:
@@ -862,6 +864,20 @@ class MemoryManager:
                     key=lambda r: (r.score, -(r.memory.session_ordinal or 0), r.memory.id),
                     reverse=True,
                 )
+
+        # ── 13. Temporal partition rerank (structural, day-precision only) ──
+        # A stable reorder, not a re-score: in-window candidates move ahead
+        # of out-of-window ones, relative order preserved within each group.
+        # Runs last so it always has final say on ordering, including when
+        # the (default-off) hard filter above is also enabled.
+        if (
+            self.config.temporal_partition_enabled
+            and _target_date is not None
+            and self.config.temporal_hard_filter_sigma <= 7.0  # safety: day-precision only
+        ):
+            results = temporal_partition(
+                results, _target_date, sigma_days=self.config.temporal_hard_filter_sigma
+            )
 
         # Update decay fields for top results (fire-and-forget)
         for r in results[:5]:

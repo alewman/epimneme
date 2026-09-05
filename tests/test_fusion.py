@@ -7,6 +7,7 @@ from epimneme.core.models import Memory, MemoryKind, MemoryResult
 from epimneme.fusion import (
     rrf_fuse, extract_proper_nouns, extract_preference_terms,
     adaptive_keyword_weight, apply_temporal_boost, _extract_memory_date,
+    temporal_partition,
 )
 
 
@@ -291,3 +292,35 @@ class TestApplyTemporalBoost:
         fused = {"a": mr}
         apply_temporal_boost(fused, "What is my favorite color?", reference_date=date(2023, 5, 30))
         assert fused["a"].score == 0.5
+
+
+class TestTemporalPartition:
+    """Structural reorder: in-window candidates first, order preserved within each group."""
+
+    def test_promotes_in_window_ahead_of_out_of_window(self):
+        far_but_ranked_first = _mr("far", score=0.9, content="[Date: 2023/06/15 (Thu) 09:05]\nunrelated")
+        near_but_ranked_second = _mr("near", score=0.5, content="[Date: 2023/05/20 (Sat) 09:05]\nsneakers")
+        results = [far_but_ranked_first, near_but_ranked_second]
+
+        partitioned = temporal_partition(results, target_date=date(2023, 5, 20), sigma_days=3.5)
+
+        assert [r.memory.id for r in partitioned] == ["near", "far"]
+
+    def test_preserves_relative_order_within_each_partition(self):
+        a = _mr("a", content="[Date: 2023/05/19 (Fri) 09:05]\nx")  # in-window
+        b = _mr("b", content="[Date: 2023/05/21 (Sun) 09:05]\ny")  # in-window
+        c = _mr("c", content="[Date: 2023/07/01 (Sat) 09:05]\nz")  # out-of-window
+        d = _mr("d", content="[Date: 2023/08/01 (Tue) 09:05]\nw")  # out-of-window
+        partitioned = temporal_partition([a, c, b, d], target_date=date(2023, 5, 20), sigma_days=3.5)
+        assert [r.memory.id for r in partitioned] == ["a", "b", "c", "d"]
+
+    def test_undated_results_treated_as_out_of_window(self):
+        dated = _mr("dated", content="[Date: 2023/05/20 (Sat) 09:05]\nx")
+        undated = _mr("undated", content="no date here")
+        partitioned = temporal_partition([undated, dated], target_date=date(2023, 5, 20), sigma_days=3.5)
+        assert [r.memory.id for r in partitioned] == ["dated", "undated"]
+
+    def test_keeps_all_candidates(self):
+        results = [_mr(str(i), content=f"no date {i}") for i in range(5)]
+        partitioned = temporal_partition(results, target_date=date(2023, 5, 20), sigma_days=3.5)
+        assert len(partitioned) == 5

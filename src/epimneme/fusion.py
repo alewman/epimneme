@@ -1180,6 +1180,37 @@ def temporal_hard_filter(
     return kept if len(kept) >= min_keep else fused
 
 
+def temporal_partition(
+    results: Sequence[MemoryResult],
+    target_date: date,
+    sigma_days: float = 3.5,
+) -> list[MemoryResult]:
+    """Structurally promote in-window candidates ahead of out-of-window ones.
+
+    Unlike `temporal_hard_filter` (which drops out-of-window candidates),
+    this is a stable partition: every candidate is kept, but for
+    day-precision temporal queries the in-window ones move to the front —
+    relative order is preserved *within* each partition, so this only
+    reorders across the window boundary, it doesn't re-score.
+
+    The near-tie gap analysis (BENCHMARK_RESULTS.md §Near-tie Gap Analysis)
+    found the median rank-1/rank-2 score gap on near-miss questions (0.007)
+    exceeds any additive boost small enough to stay safe (<=0.015) — an
+    additive boost structurally cannot close that gap on most misses. A
+    partition sidesteps the ceiling entirely: it doesn't need to out-score
+    anything, it just goes first.
+    """
+    within: list[MemoryResult] = []
+    outside: list[MemoryResult] = []
+    for r in results:
+        d = _extract_memory_date(r)
+        if d is not None and abs((d - target_date).days) <= sigma_days:
+            within.append(r)
+        else:
+            outside.append(r)
+    return within + outside
+
+
 # ── Pseudo-relevance feedback utilities ─────────────────────────────────────
 
 

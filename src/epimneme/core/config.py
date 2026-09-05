@@ -110,6 +110,10 @@ class EngramConfig:
     temporal_hard_filter_enabled: bool = False  # pre-filter candidates to date window
     temporal_hard_filter_sigma: float = 3.5     # half-window in days
 
+    # Phase G: Temporal partition rerank — structural reorder (candidates are
+    # kept, just reordered), distinct from the hard filter above; safe default-on.
+    temporal_partition_enabled: bool = True
+
     # Bulk import — allowed base directories (path traversal guard)
     import_allowed_dirs: list[str] = field(default_factory=lambda: ["/app"])
 
@@ -249,6 +253,7 @@ def default_config() -> EngramConfig:
         # Phase F: temporal hard-filter
         temporal_hard_filter_enabled=os.environ.get("EPIMNEME_TEMPORAL_HARD_FILTER", "0") == "1",
         temporal_hard_filter_sigma=float(os.environ.get("EPIMNEME_TEMPORAL_HARD_FILTER_SIGMA", "3.5")),
+        temporal_partition_enabled=os.environ.get("EPIMNEME_TEMPORAL_PARTITION_ENABLED", "1") == "1",
     )
 
     # Auto-detect sentence-transformers availability
