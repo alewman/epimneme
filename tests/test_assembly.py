@@ -12,6 +12,7 @@ from epimneme.assembly import (
     select_k,
     budget_by_chars,
     group_by_session,
+    expand_parents,
     assemble_context,
 )
 
@@ -206,7 +207,83 @@ class TestGroupBySession:
         assert len(grouped) == 2
 
 
+class TestExpandParents:
+    def test_no_fetcher_is_noop(self):
+        excerpts = [_ex("hit", session_id="s1", memory_id="a")]
+        assert expand_parents(excerpts, None, "query") == excerpts
+
+    def test_counting_query_skips_expansion(self):
+        excerpts = [_ex("hit", session_id="s1", memory_id="a")]
+
+        def fetcher(ex):
+            return [_ex("neighbor", session_id="s1", memory_id="b")]
+
+        result = expand_parents(excerpts, fetcher, "How many times did I mention this?")
+        assert len(result) == 1
+
+    def test_too_many_sessions_skips_expansion(self):
+        excerpts = [
+            _ex("hit", session_id=f"s{i}", memory_id=str(i)) for i in range(5)
+        ]
+        calls = []
+
+        def fetcher(ex):
+            calls.append(ex)
+            return [_ex("neighbor", session_id=ex.metadata["session_id"], memory_id="new")]
+
+        result = expand_parents(excerpts, fetcher, "narrow question")
+        assert result == excerpts
+        assert calls == []
+
+    def test_splices_in_fetched_neighbors(self):
+        hit = _ex("[Date: 2023/05/20]\nhit turn", session_id="s1", memory_id="a")
+
+        def fetcher(ex):
+            return [_ex("[Date: 2023/05/20]\nneighbor turn", session_id="s1", memory_id="b")]
+
+        result = expand_parents([hit], fetcher, "narrow question")
+        assert len(result) == 2
+        ids = {ex.metadata.get("memory_id") for ex in result}
+        assert ids == {"a", "b"}
+
+    def test_does_not_duplicate_already_present_neighbor(self):
+        hit = _ex("hit", session_id="s1", memory_id="a")
+        already_present = _ex("already there", session_id="s1", memory_id="b")
+
+        def fetcher(ex):
+            return [_ex("dup of b", session_id="s1", memory_id="b")]
+
+        result = expand_parents([hit, already_present], fetcher, "narrow question")
+        ids = [ex.metadata.get("memory_id") for ex in result]
+        assert ids.count("b") == 1
+
+    def test_no_session_ids_present_is_noop(self):
+        excerpts = [_ex("standalone", memory_id="a")]
+
+        def fetcher(ex):
+            return [_ex("should not appear")]
+
+        result = expand_parents(excerpts, fetcher, "narrow question")
+        assert result == excerpts
+
+
 class TestAssembleContext:
+    def test_parent_expansion_respects_budget(self):
+        hit = _ex("[Date: 2023/05/20]\n" + "x" * 100, session_id="s1", memory_id="a", score=1.0)
+
+        def fetcher(ex):
+            return [
+                _ex("[Date: 2023/05/20]\n" + "y" * 100, session_id="s1", memory_id=f"n{i}")
+                for i in range(50)  # far more than any reasonable budget
+            ]
+
+        result = assemble_context(
+            [hit], "narrow question", budget_chars=500, fetch_neighbors=fetcher
+        )
+        assert result.char_count <= 500
+        assert result.truncated
+
+
     def test_end_to_end_smoke(self):
         excerpts = [
             _ex("[Date: 2023/05/20 (Sat) 09:05]\n[USER]: bought sneakers\n[ASSISTANT]: nice!", score=0.9),

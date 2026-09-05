@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from epimneme.dedup import compute_simhash, entities_diverge, is_near_duplicate
 from epimneme.fusion import extract_logical_date, is_counting_query, parse_target_date
@@ -340,6 +340,54 @@ def group_by_session(excerpts: Sequence[Excerpt]) -> list[Excerpt]:
     return [ex for _, ex in result]
 
 
+# ── Parent-document (small-to-big) expansion ─────────────────────────────────
+
+# Expansion is only worthwhile when the query is narrowly focused on one or a
+# few sessions — a broad multi-session query would blow the char budget for
+# little benefit, and counting/aggregation queries specifically want breadth
+# (many sessions), not depth (more of the same session).
+_MAX_SESSIONS_FOR_EXPANSION = 3
+
+
+def expand_parents(
+    excerpts: Sequence[Excerpt],
+    fetch_neighbors: Callable[[Excerpt], Sequence[Excerpt]] | None,
+    query: str,
+) -> list[Excerpt]:
+    """Fetch sibling chunks adjacent to each hit and splice them in.
+
+    `fetch_neighbors` is injected so this stays pure and testable without a
+    database: the server implementation queries the store for same-session
+    neighbors by `created_at`; the bench harness looks up `corpus_id`
+    `..._turn_{n±1}` in the staged corpus. A `None` fetcher (or a query that
+    doesn't qualify) is a no-op.
+
+    Newly fetched neighbors are tagged with the same `session_id` they came
+    from, so the later `group_by_session` step merges them with the original
+    hit automatically — this function only decides *which* neighbors to add.
+    """
+    if fetch_neighbors is None or is_counting_query(query):
+        return list(excerpts)
+
+    session_ids = {sid for ex in excerpts if (sid := ex.metadata.get("session_id"))}
+    if not session_ids or len(session_ids) > _MAX_SESSIONS_FOR_EXPANSION:
+        return list(excerpts)
+
+    existing_ids = {mid for ex in excerpts if (mid := ex.metadata.get("memory_id"))}
+    expanded = list(excerpts)
+    for ex in excerpts:
+        if not ex.metadata.get("session_id"):
+            continue
+        for neighbor in fetch_neighbors(ex):
+            nid = neighbor.metadata.get("memory_id")
+            if nid and nid in existing_ids:
+                continue
+            if nid:
+                existing_ids.add(nid)
+            expanded.append(neighbor)
+    return expanded
+
+
 # ── Composition ───────────────────────────────────────────────────────────────
 
 
@@ -352,15 +400,25 @@ def assemble_context(
     k_single: int = DEFAULT_K_SINGLE,
     k_default: int = DEFAULT_K_DEFAULT,
     k_counting: int = DEFAULT_K_COUNTING,
+    fetch_neighbors: Callable[[Excerpt], Sequence[Excerpt]] | None = None,
+    enable_parent_expansion: bool = True,
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
     `excerpts` must already be relevance-ranked (best first) — assembly only
-    reorders for *presentation*, never for relevance.
+    reorders for *presentation*, never for relevance. Parent-document
+    expansion (`fetch_neighbors`) is opt-in via a caller-supplied fetcher —
+    without one, `enable_parent_expansion` has no effect.
     """
     selected = select_k(excerpts, query, k_single=k_single, k_default=k_default, k_counting=k_counting)
     pruned = prune_superseded(selected)
     budgeted, truncated = budget_by_chars(pruned, budget_chars)
+
+    if enable_parent_expansion and fetch_neighbors is not None:
+        expanded = expand_parents(budgeted, fetch_neighbors, query)
+        budgeted, truncated_2 = budget_by_chars(expanded, budget_chars)
+        truncated = truncated or truncated_2
+
     grouped = group_by_session(budgeted)
     ordered = chronological_order(grouped)
     annotated, preamble = annotate_temporal(ordered, query, reference_date)

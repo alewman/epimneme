@@ -541,6 +541,30 @@ class PostgresStore:
             row = await cur.fetchone()
         return self._row_to_memory(row) if row else None
 
+    async def get_session_neighbors(
+        self, session_id: str, created_at: datetime, n: int = 1
+    ) -> list[Memory]:
+        """Return up to n memories immediately before and after created_at
+        within the same session, ordered by created_at.
+
+        Used by parent-document (small-to-big) expansion: assembly.py fetches
+        the sibling chunks adjacent to a hit so the reader sees the full
+        exchange even when the hit itself is a truncated fragment.
+        """
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                (SELECT * FROM memories WHERE session_id = %s AND created_at < %s
+                 ORDER BY created_at DESC LIMIT %s)
+                UNION ALL
+                (SELECT * FROM memories WHERE session_id = %s AND created_at > %s
+                 ORDER BY created_at ASC LIMIT %s)
+                """,
+                (session_id, created_at, n, session_id, created_at, n),
+            )
+            rows = await cur.fetchall()
+        return [self._row_to_memory(row) for row in rows]
+
     async def pin_memory(self, memory_id: str) -> bool:
         """Pin a memory so it is never garbage-collected."""
         async with self.pool.connection() as conn:

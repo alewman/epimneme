@@ -284,6 +284,32 @@ class TestMemoryCRUD:
         assert assembled.excerpt_count == 1
 
     @pytest.mark.asyncio
+    async def test_recall_assembled_expands_parents(self, mock_manager, mock_store):
+        mem = _mem("[Date: 2023/05/20 (Sat) 09:05]\n[USER]: bought sneakers", session_id="s1")
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+        neighbor = _mem("[Date: 2023/05/20 (Sat) 09:10]\n[ASSISTANT]: nice pick!", session_id="s1")
+
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+        mock_store.get_session_neighbors.return_value = [neighbor]
+
+        results, assembled = await mock_manager.recall_assembled("What did I buy?")
+        assert len(results) == 1  # recall()'s own list is untouched
+        mock_store.get_session_neighbors.assert_awaited_once()
+        assert "nice pick" in assembled.text
+
+    @pytest.mark.asyncio
+    async def test_recall_assembled_skips_expansion_without_session(self, mock_manager, mock_store):
+        mem = _mem("no session here")  # session_id defaults to None
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+
+        results, assembled = await mock_manager.recall_assembled("anything")
+        mock_store.get_session_neighbors.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_forget_not_found(self, mock_manager, mock_store):
         mock_store.get_memory.return_value = None
         result = await mock_manager.forget("nonexistent-id")

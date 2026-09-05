@@ -929,7 +929,8 @@ class MemoryManager:
         happening after `recall`'s ranking is final. `recall`'s own ranked
         list is unaffected; this is purely additive.
         """
-        from epimneme.assembly import assemble_context
+        from epimneme.assembly import Excerpt, assemble_context
+        from epimneme.fusion import is_counting_query
 
         results = await self.recall(
             query, project_name=project_name, kind=kind, tags=tags,
@@ -945,6 +946,33 @@ class MemoryManager:
             except ValueError:
                 pass
 
+        # Parent-document expansion needs an async DB round trip, but
+        # assemble_context is a pure/sync function — pre-fetch neighbors for
+        # every candidate excerpt here, then hand assembly a plain dict
+        # lookup. Mirrors expand_parents' own gating (non-counting, few
+        # distinct sessions) so we don't fetch neighbors that would be
+        # thrown away anyway.
+        fetch_neighbors = None
+        if self.config.assembly_parent_expansion and not is_counting_query(query):
+            session_ids = {r.memory.session_id for r in results if r.memory.session_id}
+            if session_ids and len(session_ids) <= 3:
+                neighbor_map: dict[str, list[Excerpt]] = {}
+                for mr in results:
+                    m = mr.memory
+                    if not m.session_id:
+                        continue
+                    neighbors = await self.store.get_session_neighbors(
+                        m.session_id, m.created_at, n=1
+                    )
+                    neighbor_map[m.id] = [
+                        self._memory_result_to_excerpt(MemoryResult(memory=n, score=mr.score))
+                        for n in neighbors
+                    ]
+
+                def fetch_neighbors(ex: Excerpt) -> list[Excerpt]:
+                    mid = ex.metadata.get("memory_id")
+                    return neighbor_map.get(mid, []) if mid else []
+
         assembled = assemble_context(
             excerpts,
             query,
@@ -952,6 +980,8 @@ class MemoryManager:
             budget_chars=self.config.assembly_budget_chars,
             k_single=self.config.assembly_k_single,
             k_counting=self.config.assembly_k_counting,
+            fetch_neighbors=fetch_neighbors,
+            enable_parent_expansion=self.config.assembly_parent_expansion,
         )
         return results, assembled
 
