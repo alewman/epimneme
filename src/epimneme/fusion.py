@@ -506,8 +506,8 @@ def apply_preference_signal_boost(
 # The boost is additive and capped so it never overrides a strong semantic
 # or keyword match — it only disambiguates among near-tied candidates.
 
-_DATE_IN_CONTENT_RE = re.compile(r"\[Date:\s*(\d{4}-\d{2}-\d{2})\]")
-_DATE_LIKE_TAG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE_IN_CONTENT_RE = re.compile(r"\[Date:\s*(\d{4})[-/](\d{2})[-/](\d{2})")
+_DATE_LIKE_TAG_RE = re.compile(r"^(\d{4})[-/](\d{2})[-/](\d{2})")
 
 # Queries asking about a time interval rather than targeting a date
 _INTERVAL_QUERY_RE = re.compile(
@@ -586,21 +586,30 @@ def _parse_target_date(query: str, reference_date: date) -> date | None:
 def _extract_memory_date(mr: "MemoryResult") -> date | None:
     """Extract the logical date of a memory.
 
-    Priority: [Date: YYYY-MM-DD] header in content → date-like tag → created_at.
+    Priority: [Date: …] header in content → date-like tag → created_at.
+
+    Accepts both ISO (`YYYY-MM-DD`) and slash-delimited (`YYYY/MM/DD`, optionally
+    followed by a weekday/time suffix such as `(Sat) 09:05`) date formats — the
+    latter is how the LongMemEval haystacks (and any transcript import using the
+    same convention) actually encode dates. Prior to this fix the regexes only
+    matched ISO-hyphenated dates, so every benchmark memory silently fell through
+    to `created_at` (real ingestion wall-clock time, not the logical conversation
+    date) — the temporal boost was effectively a no-op on real benchmark data.
     """
-    # Turn-pair benchmark format embeds date as [Date: YYYY-MM-DD]
+    # Turn-pair benchmark format embeds date as [Date: YYYY/MM/DD (Day) HH:MM]
     m = _DATE_IN_CONTENT_RE.search(mr.memory.content)
     if m:
         try:
-            return date.fromisoformat(m.group(1))
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             pass
 
     # Benchmark also stores date as a tag string
     for tag in mr.memory.tags:
-        if _DATE_LIKE_TAG_RE.match(tag):
+        m = _DATE_LIKE_TAG_RE.match(tag)
+        if m:
             try:
-                return date.fromisoformat(tag)
+                return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
             except ValueError:
                 pass
 

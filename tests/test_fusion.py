@@ -1,17 +1,23 @@
 """Tests for engram.fusion — RRF fusion, proper noun extraction, preference terms, adaptive weights."""
 
+from datetime import date, datetime, timezone
+
 import pytest
 from epimneme.core.models import Memory, MemoryKind, MemoryResult
 from epimneme.fusion import (
     rrf_fuse, extract_proper_nouns, extract_preference_terms,
-    adaptive_keyword_weight,
+    adaptive_keyword_weight, apply_temporal_boost, _extract_memory_date,
 )
 
 
-def _mr(mid: str, score: float = 0.0, content: str = "") -> MemoryResult:
+def _mr(mid: str, score: float = 0.0, content: str = "", tags: list[str] | None = None,
+        created_at: datetime | None = None) -> MemoryResult:
     """Helper to build a MemoryResult with a given id and score."""
+    kwargs = {"id": mid, "kind": MemoryKind.FACT, "content": content, "tags": tags or []}
+    if created_at is not None:
+        kwargs["created_at"] = created_at
     return MemoryResult(
-        memory=Memory(id=mid, kind=MemoryKind.FACT, content=content),
+        memory=Memory(**kwargs),
         score=score,
     )
 
@@ -225,3 +231,63 @@ class TestAdaptiveKeywordWeight:
             "My chocolate chip cookies need something extra. Any advice?", self.BASE
         )
         assert w == self.BASE
+
+
+class TestExtractMemoryDate:
+    """Regression tests for the LME slash-date parsing bug.
+
+    Real LongMemEval haystacks encode dates as `[Date: 2023/05/20 (Sat) 09:05]`
+    (slash-delimited, with a weekday/time suffix) — not ISO `YYYY-MM-DD`. The
+    original regexes only matched ISO, so every benchmark memory fell through
+    to `created_at` (ingestion wall-clock time), silently disabling the
+    temporal boost on the exact data it was built for.
+    """
+
+    def test_slash_date_in_content(self):
+        mr = _mr("a", content="[Date: 2023/05/20 (Sat) 09:05]\n[USER]: hi")
+        assert _extract_memory_date(mr) == date(2023, 5, 20)
+
+    def test_iso_date_in_content_still_works(self):
+        mr = _mr("a", content="[Date: 2023-05-20]\n[USER]: hi")
+        assert _extract_memory_date(mr) == date(2023, 5, 20)
+
+    def test_slash_date_tag(self):
+        mr = _mr("a", content="no date here", tags=["benchmark", "lme", "2023/05/20 (Sat) 09:05"])
+        assert _extract_memory_date(mr) == date(2023, 5, 20)
+
+    def test_iso_date_tag_still_works(self):
+        mr = _mr("a", content="no date here", tags=["2023-05-20"])
+        assert _extract_memory_date(mr) == date(2023, 5, 20)
+
+    def test_falls_back_to_created_at(self):
+        ca = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        mr = _mr("a", content="no date here", created_at=ca)
+        assert _extract_memory_date(mr) == date(2024, 1, 1)
+
+    def test_no_date_anywhere_returns_none(self):
+        mr = _mr("a", content="x")
+        # created_at always has a default_factory value in practice, but guard
+        # the None branch explicitly since the function checks `is not None`.
+        mr.memory.created_at = None
+        assert _extract_memory_date(mr) is None
+
+
+class TestApplyTemporalBoost:
+    """Confirms the boost actually discriminates once dates parse correctly."""
+
+    def test_boosts_memory_near_target_date(self):
+        # Reference date is the latest logical date in the result set (May 30).
+        # Query asks about "10 days ago" → target = May 20.
+        near = _mr("near", score=0.5, content="[Date: 2023/05/20 (Sat) 09:05]\n[USER]: bought sneakers")
+        far = _mr("far", score=0.5, content="[Date: 2023/05/30 (Tue) 09:05]\n[USER]: unrelated")
+        fused = {"near": near, "far": far}
+
+        apply_temporal_boost(fused, "What did I buy 10 days ago?", reference_date=date(2023, 5, 30))
+
+        assert fused["near"].score > fused["far"].score
+
+    def test_noop_without_relative_date_expression(self):
+        mr = _mr("a", score=0.5, content="[Date: 2023/05/20 (Sat) 09:05]\n[USER]: hi")
+        fused = {"a": mr}
+        apply_temporal_boost(fused, "What is my favorite color?", reference_date=date(2023, 5, 30))
+        assert fused["a"].score == 0.5
