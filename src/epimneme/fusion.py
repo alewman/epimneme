@@ -583,8 +583,12 @@ def _parse_target_date(query: str, reference_date: date) -> date | None:
     return None
 
 
-def _extract_memory_date(mr: "MemoryResult") -> date | None:
-    """Extract the logical date of a memory.
+def extract_logical_date(
+    content: str,
+    tags: "Iterable[str]" = (),
+    created_at: "object | None" = None,
+) -> date | None:
+    """Extract the logical date implied by memory content, tags, or timestamp.
 
     Priority: [Date: …] header in content → date-like tag → created_at.
 
@@ -595,9 +599,12 @@ def _extract_memory_date(mr: "MemoryResult") -> date | None:
     matched ISO-hyphenated dates, so every benchmark memory silently fell through
     to `created_at` (real ingestion wall-clock time, not the logical conversation
     date) — the temporal boost was effectively a no-op on real benchmark data.
+
+    Shared by the temporal boost (`_extract_memory_date`) and
+    `epimneme.assembly`'s date-header parsing, so both agree on one convention.
     """
     # Turn-pair benchmark format embeds date as [Date: YYYY/MM/DD (Day) HH:MM]
-    m = _DATE_IN_CONTENT_RE.search(mr.memory.content)
+    m = _DATE_IN_CONTENT_RE.search(content)
     if m:
         try:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -605,7 +612,7 @@ def _extract_memory_date(mr: "MemoryResult") -> date | None:
             pass
 
     # Benchmark also stores date as a tag string
-    for tag in mr.memory.tags:
+    for tag in tags:
         m = _DATE_LIKE_TAG_RE.match(tag)
         if m:
             try:
@@ -614,11 +621,15 @@ def _extract_memory_date(mr: "MemoryResult") -> date | None:
                 pass
 
     # Production fallback: use storage timestamp
-    ca = mr.memory.created_at
-    if ca is not None:
-        return ca.date() if hasattr(ca, "date") else None
+    if created_at is not None:
+        return created_at.date() if hasattr(created_at, "date") else None
 
     return None
+
+
+def _extract_memory_date(mr: "MemoryResult") -> date | None:
+    """Extract the logical date of a memory. See `extract_logical_date`."""
+    return extract_logical_date(mr.memory.content, mr.memory.tags, mr.memory.created_at)
 
 
 def _extract_reference_date(results: "Iterable[MemoryResult]") -> date | None:

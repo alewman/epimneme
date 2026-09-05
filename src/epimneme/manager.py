@@ -894,6 +894,67 @@ class MemoryManager:
 
         return final
 
+    @staticmethod
+    def _memory_result_to_excerpt(mr: MemoryResult) -> "Excerpt":
+        from epimneme.assembly import Excerpt
+
+        m = mr.memory
+        return Excerpt(
+            text=m.content,
+            score=mr.score,
+            metadata={
+                "memory_id": m.id,
+                "session_id": m.session_id,
+                "tags": m.tags,
+                "created_at": m.created_at,
+                "supersedes": m.supersedes,
+                "version_of": m.version_of,
+            },
+        )
+
+    async def recall_assembled(
+        self,
+        query: str,
+        project_name: Optional[str] = None,
+        kind: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+        limit: int = 20,
+        reference_date: Optional[str] = None,
+    ) -> tuple[list[MemoryResult], "AssembledContext"]:
+        """Like `recall`, plus a deterministically assembled context string.
+
+        Assembly (see `epimneme.assembly`) precomputes date arithmetic, prunes
+        superseded facts, groups by session, orders chronologically for
+        presentation, and budgets by character count — all $0/query, all
+        happening after `recall`'s ranking is final. `recall`'s own ranked
+        list is unaffected; this is purely additive.
+        """
+        from epimneme.assembly import assemble_context
+
+        results = await self.recall(
+            query, project_name=project_name, kind=kind, tags=tags,
+            limit=limit, reference_date=reference_date,
+        )
+        excerpts = [self._memory_result_to_excerpt(mr) for mr in results]
+
+        from datetime import date as _date
+        parsed_ref: _date | None = None
+        if reference_date:
+            try:
+                parsed_ref = _date.fromisoformat(reference_date[:10].replace("/", "-"))
+            except ValueError:
+                pass
+
+        assembled = assemble_context(
+            excerpts,
+            query,
+            reference_date=parsed_ref,
+            budget_chars=self.config.assembly_budget_chars,
+            k_single=self.config.assembly_k_single,
+            k_counting=self.config.assembly_k_counting,
+        )
+        return results, assembled
+
     async def forget(self, memory_id: str, reason: str = "") -> str:
         memory = await self.store.get_memory(memory_id)
         if not memory:

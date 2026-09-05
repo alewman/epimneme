@@ -258,6 +258,32 @@ class TestMemoryCRUD:
         assert results[0].score > single_rrf
 
     @pytest.mark.asyncio
+    async def test_recall_assembled_empty(self, mock_manager, mock_store):
+        mock_store.search_fulltext.return_value = []
+        mock_store.search_semantic.return_value = []
+
+        results, assembled = await mock_manager.recall_assembled("anything")
+        assert results == []
+        assert assembled.text == ""
+        assert assembled.excerpt_count == 0
+
+    @pytest.mark.asyncio
+    async def test_recall_assembled_returns_text_and_unaffected_results(self, mock_manager, mock_store):
+        mem = _mem("[Date: 2023/05/20 (Sat) 09:05]\n[USER]: bought sneakers")
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+
+        results, assembled = await mock_manager.recall_assembled("What did I buy?")
+        # recall()'s own ranked list is untouched by assembly
+        assert len(results) == 1
+        assert results[0].memory.content == mem.content
+        # assembled context carries the same content through
+        assert "bought sneakers" in assembled.text
+        assert assembled.excerpt_count == 1
+
+    @pytest.mark.asyncio
     async def test_forget_not_found(self, mock_manager, mock_store):
         mock_store.get_memory.return_value = None
         result = await mock_manager.forget("nonexistent-id")

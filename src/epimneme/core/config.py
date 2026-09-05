@@ -116,6 +116,13 @@ class EngramConfig:
     # PostgreSQL connection pool timeout (seconds)
     pg_pool_timeout: float = 30.0
 
+    # Context assembly (deterministic post-retrieval formatting for the reader —
+    # see epimneme.assembly). Off by default at the API surface (`assemble=true`
+    # opt-in); these tune its behavior when enabled.
+    assembly_budget_chars: int = 12_000  # total char budget for assembled context
+    assembly_k_single: int = 5           # K for short, single-fact queries
+    assembly_k_counting: int = 20        # K for counting/aggregation queries
+
     @property
     def pg_dsn(self) -> str:
         """PostgreSQL connection string."""
@@ -203,6 +210,9 @@ def default_config() -> EngramConfig:
             if d.strip()
         ],
         pg_pool_timeout=float(os.environ.get("EPIMNEME_PG_POOL_TIMEOUT", "30")),
+        assembly_budget_chars=int(os.environ.get("EPIMNEME_ASSEMBLY_BUDGET_CHARS", "12000")),
+        assembly_k_single=int(os.environ.get("EPIMNEME_ASSEMBLY_K_SINGLE", "5")),
+        assembly_k_counting=int(os.environ.get("EPIMNEME_ASSEMBLY_K_COUNTING", "20")),
         rrf_vector_weight=float(os.environ.get("EPIMNEME_RRF_VECTOR_WEIGHT", "1.0")),
         rrf_keyword_weight=float(os.environ.get("EPIMNEME_RRF_KEYWORD_WEIGHT", "0.75")),
         rrf_overfetch_multiplier=int(os.environ.get("EPIMNEME_RRF_OVERFETCH", "3")),

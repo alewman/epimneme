@@ -394,6 +394,7 @@ async def api_recall(
     limit: int = Query(default=10, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     deep: bool = False,
+    assemble: bool = False,
     reference_date: Optional[str] = None,
     auth: AuthContext = Depends(get_auth),
 ):
@@ -407,13 +408,30 @@ async def api_recall(
         bundle = await mgr.get_context(query, project_name=project)
         return {"context": bundle.to_prompt() or f"No context found for: {query}"}
 
-    # Fetch limit+offset so we can slice for offset-based pagination
-    fetch_count = limit + offset
-    results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=fetch_count, reference_date=reference_date)
+    assembled_context = None
+    if assemble:
+        # Assembly runs on the full (unpaginated) recall — offset/limit still
+        # apply to the raw `results` list below; assembly always sees the
+        # same top-`limit` window as page 0, backward-compatible when unused.
+        results, assembled = await mgr.recall_assembled(
+            query, project_name=project, kind=kind, tags=tag_list,
+            limit=limit + offset, reference_date=reference_date,
+        )
+        assembled_context = {
+            "text": assembled.text,
+            "excerpt_count": assembled.excerpt_count,
+            "char_count": assembled.char_count,
+            "truncated": assembled.truncated,
+        }
+    else:
+        # Fetch limit+offset so we can slice for offset-based pagination
+        fetch_count = limit + offset
+        results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=fetch_count, reference_date=reference_date)
+
     page = results[offset : offset + limit]
     # total is a lower bound — true total requires a separate count query
-    has_more = len(results) == fetch_count
-    return {
+    has_more = len(results) == (limit + offset)
+    response = {
         "count": len(page),
         "total": len(results),
         "has_more": has_more,
@@ -438,6 +456,9 @@ async def api_recall(
             for r in page
         ],
     }
+    if assembled_context is not None:
+        response["assembled_context"] = assembled_context
+    return response
 
 
 @app.delete("/api/memories/{memory_id}")
@@ -1450,6 +1471,7 @@ async def recall(
     tags: Optional[str] = None,
     limit: int = 10,
     deep: bool = False,
+    assemble: bool = False,
 ) -> str:
     """Search for relevant memories using semantic similarity and keywords.
 
@@ -1464,6 +1486,10 @@ async def recall(
         tags: Comma-separated tags to filter by (e.g. "auth,security") — only returns memories with ALL specified tags
         limit: Maximum results (default 10)
         deep: If True, returns rich context bundle with graph traversal
+        assemble: If True, also returns a deterministically assembled context
+            block (precomputed date arithmetic, supersession pruning,
+            chronological grouping) better suited for a reader LLM than the
+            raw ranked list
     """
     await _mcp_enforce_project(ctx, project)
     mgr = get_manager()
@@ -1473,6 +1499,12 @@ async def recall(
     if deep:
         bundle = await mgr.get_context(query, project_name=project)
         return bundle.to_prompt() or f"No context found for: {query}"
+
+    if assemble:
+        results, assembled = await mgr.recall_assembled(query, project_name=project, kind=kind, tags=tag_list, limit=limit)
+        if not results:
+            return f"No memories found for: {query}"
+        return f"Assembled context ({assembled.excerpt_count} excerpts):\n\n{assembled.text}"
 
     results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=limit)
     if not results:
