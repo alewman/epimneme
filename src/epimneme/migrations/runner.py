@@ -61,7 +61,7 @@ class MigrationRunner:
             if not parts[0].isdigit():
                 continue
             version = int(parts[0])
-            module = importlib.import_module(f"engram.migrations.{name}")
+            module = importlib.import_module(f"epimneme.migrations.{name}")
             if not hasattr(module, "up"):
                 logger.warning(f"Migration {name} has no up() function — skipping")
                 continue

@@ -178,19 +178,47 @@ class EngramClient:
         result = await self.search(query, project=project, limit=limit)
         return result.get("results", [])
 
-    async def clear_project(self, project_name: str, batch_size: int = 100):
-        """Delete all memories in a project by searching and deleting in batches."""
-        deleted = 0
+    async def list_all_memories(self, project: str, batch_size: int = 500) -> list[dict]:
+        """Enumerate every memory in a project via /api/memories/recent (paginated).
+
+        Unlike a relevance-scored search, this is a direct listing — every
+        memory is guaranteed to be visited exactly once, regardless of how
+        well it happens to match a query.
+        """
+        session = await self._ensure_session()
+        items: list[dict] = []
+        offset = 0
         while True:
-            results = await self.search(
-                query="*", project=project_name, limit=batch_size
-            )
-            items = results.get("results", [])
-            if not items:
+            async def _do(offset=offset):
+                async with session.get(
+                    f"{self.base_url}/api/memories/recent",
+                    params={"project": project, "limit": batch_size, "offset": offset},
+                ) as resp:
+                    return await resp.json()
+
+            page = await _with_retry(_do)
+            batch = page.get("memories", [])
+            items.extend(batch)
+            if len(batch) < batch_size:
                 break
-            for item in items:
-                await self.delete_memory(item["id"], hard=True)
-                deleted += 1
+            offset += batch_size
+        return items
+
+    async def clear_project(self, project_name: str, batch_size: int = 100):
+        """Delete every memory in a project via direct enumeration + delete.
+
+        Previously used a relevance-scored `search(query="*")` loop, which
+        happens to work (search still returns broadly-relevant hits for a
+        degenerate query) but isn't a guaranteed complete enumeration — a
+        memory that scores too low on every signal could theoretically be
+        skipped forever. Listing via /api/memories/recent visits every row
+        exactly once regardless of relevance.
+        """
+        items = await self.list_all_memories(project_name, batch_size=500)
+        deleted = 0
+        for item in items:
+            await self.delete_memory(item["id"], hard=True)
+            deleted += 1
         return deleted
 
 

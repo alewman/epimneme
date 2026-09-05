@@ -1,10 +1,10 @@
 FROM python:3.12-slim AS base
 
-LABEL org.opencontainers.image.title="engram"
+LABEL org.opencontainers.image.title="epimneme"
 LABEL org.opencontainers.image.description="Persistent memory service for AI coding agents (PostgreSQL + pgvector)"
-LABEL org.opencontainers.image.licenses="Apache-2.0"
-LABEL org.opencontainers.image.source="https://github.com/alewman/engram"
-LABEL org.opencontainers.image.url="https://github.com/alewman/engram"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.source="https://github.com/alewman/epimneme"
+LABEL org.opencontainers.image.url="https://github.com/alewman/epimneme"
 
 # Prevent Python from writing .pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -38,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 EXPOSE 8000
 
 # Run with uvicorn
-CMD ["uvicorn", "engram.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--log-level", "info"]
+CMD ["uvicorn", "epimneme.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--log-level", "info"]

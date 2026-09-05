@@ -8,7 +8,7 @@ version = "0.7.0"
 description = "Persistent memory service for AI coding agents — PostgreSQL + pgvector backend"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "Apache-2.0"
+license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [
     {name = "Alewman"},
@@ -17,7 +17,7 @@ keywords = ["mcp", "ai-agents", "memory", "epimneme", "rag", "pgvector", "semant
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
