@@ -57,7 +57,7 @@ GIT_MSG=$(git -C "$BENCH_DIR/.." log -1 --format="%s" 2>/dev/null || echo "unkno
 EPIMNEME_VERSION=$(curl -s "$EPIMNEME_URL/health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version','?'))" 2>/dev/null || echo "unknown")
 
 # Pull current EPIMNEME_* env vars from running container
-CONTAINER_CONFIG=$(docker inspect engram2 --format='{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+CONTAINER_CONFIG=$(docker inspect engram --format='{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
   | grep "^EPIMNEME_" | grep -v "PASSWORD\|SECRET\|TOKEN" | sort || echo "(docker inspect unavailable)")
 
 # ── Print + log header ────────────────────────────────────────────────────────
