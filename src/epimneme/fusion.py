@@ -1102,9 +1102,19 @@ def mmr_rerank(
     range_s = max(max_s - min_s, 1e-10)
 
     selected: list[MemoryResult] = []
-    selected_sets: list[frozenset[str]] = []
     session_counts: dict[str, int] = {}
     remaining = list(results)
+
+    # Running max-similarity-to-selected per remaining candidate. The naive
+    # greedy MMR loop recomputes max(Jaccard(candidate, s) for s in selected)
+    # from scratch every outer iteration — O(remaining × selected) per
+    # iteration, O(n·k²) overall (n, k both scale with the caller's `limit`,
+    # so this was effectively cubic in `limit`: ~174s at limit=200 on a
+    # ~2,500-memory project vs ~1s at limit=10). Selecting one item can only
+    # ever *raise* another candidate's max-similarity, never lower it, so it
+    # can be maintained incrementally in O(remaining) per iteration instead —
+    # O(n·k) overall — with identical selection output.
+    max_sim_to_selected: dict[str, float] = {mr.memory.id: 0.0 for mr in remaining}
 
     while remaining and len(selected) < target:
         best_val = float("-inf")
@@ -1113,18 +1123,12 @@ def mmr_rerank(
         for i, mr in enumerate(remaining):
             rel = (mr.score - min_s) / range_s
             sid = mr.memory.session_id or mr.memory.id
-            ts = token_sets[mr.memory.id]
 
             if session_counts.get(sid, 0) >= session_cap:
                 # Hard-penalise over-cap sessions: force diversity in first half
                 max_sim = 1.0
-            elif selected_sets:
-                max_sim = max(
-                    len(ts & s) / len(ts | s) if (ts | s) else 0.0
-                    for s in selected_sets
-                )
             else:
-                max_sim = 0.0
+                max_sim = max_sim_to_selected[mr.memory.id]
 
             val = lambda_ * rel - (1.0 - lambda_) * max_sim
             if val > best_val:
@@ -1132,10 +1136,16 @@ def mmr_rerank(
                 best_idx = i
 
         chosen = remaining.pop(best_idx)
+        chosen_set = token_sets[chosen.memory.id]
         selected.append(chosen)
-        selected_sets.append(token_sets[chosen.memory.id])
         sid = chosen.memory.session_id or chosen.memory.id
         session_counts[sid] = session_counts.get(sid, 0) + 1
+
+        for mr in remaining:
+            ts = token_sets[mr.memory.id]
+            sim = len(ts & chosen_set) / len(ts | chosen_set) if (ts | chosen_set) else 0.0
+            if sim > max_sim_to_selected[mr.memory.id]:
+                max_sim_to_selected[mr.memory.id] = sim
 
     # Safety: append any overflow (shouldn't happen under normal operation)
     if len(selected) < target:
