@@ -19,3 +19,4 @@ timestamp	bench	tag	version	git_hash	chunk_size	chunk_overlap	ef_search	model	re
 20260512_1301	beam	abl-no-tiebreak-mmr	0.7.0	25d6016	1000	300	200	sentence-transformers/all-MiniLM-L6-v2	results_engram_beam_abl-no-tiebreak-mmr_20260512_1301.json
 20260512_1342	beir	v402-scifact	0.7.0	6e32bec	1000	300	200	sentence-transformers/all-MiniLM-L6-v2	results_engram_beir_v402-scifact_20260512_1342.json
 20260904_2007	lme	v700-baseline	0.7.0	df2ef32	800	100	100	all-MiniLM-L6-v2	results_engram_lme_v700-baseline_20260904.jsonl
+20260905_2331	lme-m-hier	phase5-experiment	0.7.0	2949966	800	100	100	all-MiniLM-L6-v2	results_lme_m_hierarchical_experiment_20260905.jsonl
