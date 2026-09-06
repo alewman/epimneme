@@ -497,7 +497,74 @@ Interventions of +0.015 or smaller are insufficient for ~75% of near-tie misses.
 
 ---
 
-*Benchmark harness: `/docker/appdata/engram/benchmarks/`*
-*Results: `results_engram_lme_rrf_final.jsonl`, `results_engram_locomo_top10_final.json`*
+## September 2026 — Rename Completion, Temporal Fix, Assembly Module, Phase 4/5
+
+### Context
+
+All prior "current" numbers in this repo (and any run against a live `localhost:8000` before this date) were quietly stale: the deployed container was built 2026-08-28, before the Engram→Epimneme rename was even complete — it ran the pre-rename `engram` package. Two hardcoded `engram.*` references (the Dockerfile's `CMD` and `migrations/runner.py`'s import path) meant a fresh rebuild from current source crashed on startup entirely until fixed. The numbers below are the first ones verified against a container actually running current code.
+
+### Fixed: temporal date parsing
+
+`fusion.extract_logical_date` only matched ISO-hyphenated dates (`[Date: YYYY-MM-DD]`). Real LongMemEval haystacks (and the turn-pair benchmark ingestion) encode dates as `[Date: YYYY/MM/DD (Day) HH:MM]` — slash-delimited, with a weekday/time suffix. Every benchmark memory silently missed the regex and fell through to `created_at` (real ingestion wall-clock time, near-identical across a whole haystack) instead of the conversation's logical date — `apply_temporal_boost` was effectively a no-op on the exact data it's benchmarked against, for the entire history of this project up to this fix.
+
+### LME-S v700 (500 questions, first real post-rename-fix baseline)
+
+| Metric | v500 (documented) | v700 (this run) | Δ |
+|---|---|---|---|
+| R@1 | 0.858 | **0.860** | +0.2pp |
+| R@5 | 0.968 | 0.968 | — |
+| R@10 | 0.980 | 0.982 | +0.2pp |
+| NDCG@10 | — | 0.894 | — |
+
+Per-type (R@1 / R@10 / RecallAll@10 / EvidenceCompleteness@10):
+
+| Type | n | R@1 | R@10 | RecallAll@10 | EvidenceCompleteness@10 |
+|---|---|---|---|---|---|
+| knowledge-update | 78 | 0.962 | 1.000 | 0.987 | 0.994 |
+| multi-session | 133 | 0.842 | 0.985 | 0.767 | 0.896 |
+| single-session-assistant | 56 | 0.982 | 1.000 | 1.000 | 1.000 |
+| single-session-preference | 30 | 0.400 | 0.833 | 0.833 | 0.833 |
+| single-session-user | 70 | 0.900 | 0.986 | 0.986 | 0.986 |
+| temporal-reasoning | 133 | **0.850** | 0.992 | 0.782 | 0.900 |
+
+temporal-reasoning R@1 improved 0.835→0.850 (+1.5pp) from the combined temporal date-parsing fix and Phase 4's temporal partition rerank (see below) — bundled together in this run, not separable without another full run. Short of the originally-targeted ≥0.87; accepted as incremental progress rather than invested in further in this pass.
+
+### New: recall_all@k / evidence_completeness@k
+
+`recall_any@k` (the only metric tracked before this) is 1.0 as soon as *one* gold session is in the top-k — it says nothing about whether *all* the needed evidence made it in. At the **turn level** (not session level) on the run above:
+
+| k | recall_any | recall_all | evidence_completeness |
+|---|---|---|---|
+| 1 | 0.860 | 0.014 | 0.111 |
+| 10 | 0.982 | **0.094** | **0.527** |
+| 50 | 1.000 | 0.330 | 0.796 |
+
+At R@10, `recall_any` says 98.2% — but only 9.4% of questions have *every* gold turn present, and on average only 52.7% of the necessary evidence turns are retrieved. Session-level completeness is much healthier (RecallAll@10=0.866, EvidenceCompleteness@10=0.933) — this is specifically a turn-granularity gap that `recall_any@k` was masking entirely.
+
+### Phase 4 — Temporal partition rerank
+
+Structural reorder (not an additive boost — see the Near-tie Gap Analysis above for why additive boosts can't close most of these gaps): for day-precision temporal queries, candidates within the target-date window rank ahead of out-of-window ones, order preserved within each group. Included in the v700 numbers above. Did not independently reach the ≥0.87 temporal R@1 target on its own merits (bundled with the date-parsing fix, see above) — kept as a net-positive, no-regression change.
+
+### Phase 5 — LME-M hierarchical retrieval: NO-GO
+
+Investigated whether two-stage retrieval (rank sessions by aggregated chunk score, then rank chunks within the winning sessions) beats flat chunk search at LME-M scale (501 sessions/haystack vs LME-S's ~40). n=24 (randomly sampled — the dataset is grouped by `question_type`, not shuffled):
+
+| Config | R@1 | R@5 | R@10 (recall_any / recall_all / evidence_completeness) |
+|---|---|---|---|
+| flat | 0.708 | 0.875 | 0.917 / 0.792 / 0.854 |
+| hierarchical (top 3 or 5 sessions) | 0.708 | 0.875 | 0.875 / 0.708 / 0.767 |
+| hierarchical (top 10 sessions) | 0.708 | 0.875 | 0.917 / 0.792 / 0.854 |
+
+Every configuration ties flat at best and regresses R@10 for narrower session cuts — sessions are already ranked by the existing multi-signal RRF pipeline, so restricting to the top-N sessions before reranking only removes candidates without adding signal. **Not productionized.** Full write-up: `benchmarks/lme_m_hierarchical_experiment.py` commit message.
+
+### Also fixed this pass
+
+- `fusion.mmr_rerank` was O(n·k²) in the requested limit — 0.8s → 174s going from `limit=10` to `limit=200` on a ~2,500-memory project (found while trying to widen the candidate pool for the Phase 5 investigation above). Fixed to O(n·k), output unchanged.
+- `benchmarks/epimneme_client.py`'s `clear_project()` now enumerates via `/api/memories/recent` instead of a relevance-scored `search(query="*")` loop.
+
+---
+
+*Benchmark harness: `/data/emu/epimneme/benchmarks/`*
+*Results: `results_engram_lme_rrf_final.jsonl`, `results_engram_locomo_top10_final.json` (April 2026); `results_engram_lme_v700-baseline_20260904.jsonl`, `results_lme_m_hierarchical_experiment_20260905.jsonl` (September 2026, local only — see `.gitignore`)*
 *Pre-RRF results: `results_engram_lme_session_full.jsonl`, `results_engram_lme_clean_nodedup.jsonl`, `results_engram_locomo_full.json`, `results_engram_locomo_top10.json`*
-*Run dates: April 7–8, 2026*
+*Run dates: April 7–8, 2026; September 4–5, 2026*

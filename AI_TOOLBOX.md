@@ -9,7 +9,7 @@ Reference for agents running benchmarks, tuning config, and interpreting results
 Always use the wrapper script — it captures git hash, container config, and version automatically:
 
 ```bash
-cd /docker/appdata/engram
+cd /data/emu/epimneme
 
 # LongMemEval (500q, ~40min with MiniLM, ~55hr with BGE-large)
 nohup ./benchmarks/run_bench.sh lme <version_tag> > /dev/null 2>&1 &
@@ -60,21 +60,21 @@ leakage between questions/conversations. Subsequent runs skip ingest and go stra
 **Workflow:**
 
 ```bash
-cd /docker/appdata/engram
+cd /data/emu/epimneme
 
 # Step 1: Stage each benchmark once (~40min for LME, then done).
 # Run this after any model/chunk-size change that invalidates existing embeddings.
 python3 -u benchmarks/longmemeval_bench.py \
   benchmarks/data/longmemeval_s_cleaned.json \
   --granularity turn-pair --workers 4 \
-  --engram-url http://192.168.90.45:8000 --no-cleanup > /tmp/lme_prestage.log 2>&1 &
+  --engram-url http://localhost:8000 --no-cleanup > /tmp/lme_prestage.log 2>&1 &
 
 python3 -u benchmarks/locomo_bench.py \
   benchmarks/data/locomo10.json \
-  --granularity dialog --engram-url http://192.168.90.45:8000 --no-cleanup
+  --granularity dialog --engram-url http://localhost:8000 --no-cleanup
 
 python3 -u benchmarks/beam_bench.py \
-  --split 100K --engram-url http://192.168.90.45:8000 --no-cleanup
+  --split 100K --engram-url http://localhost:8000 --no-cleanup
 
 # Step 2: All subsequent runs — just add --skip-ingest.
 # --skip-ingest checks which projects already exist, auto-disables cleanup.
@@ -84,11 +84,11 @@ nohup ./benchmarks/run_bench.sh beam   <version_tag> --skip-ingest > /dev/null 2
 ```
 
 **When to re-stage:**
-- After changing `ENGRAM_EMBEDDING_MODEL` or `ENGRAM_CHUNK_SIZE` (old embeddings are stale)
+- After changing `EPIMNEME_EMBEDDING_MODEL` or `EPIMNEME_CHUNK_SIZE` (old embeddings are stale)
 - After a schema migration that drops the memories table
 - To re-stage: delete staged projects first (`clear_all` or drop+recreate DB), then re-run Step 1
 
-**Note:** `run_bench.sh` passes `--engram-url http://192.168.90.45:8000` and all extra args automatically.
+**Note:** `run_bench.sh` passes `--engram-url http://localhost:8000` and all extra args automatically.
 
 ---
 
@@ -128,47 +128,52 @@ EOF
 
 | Variable | Current | Notes |
 |---|---|---|
-| `ENGRAM_EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Switch to BGE-large for higher quality |
-| `ENGRAM_EMBEDDING_DIM` | 384 | Must match model (BGE-large=1024) |
-| `ENGRAM_CHUNK_SIZE` | 1000 | Max chars per chunk (~1150 safe limit for MiniLM) |
-| `ENGRAM_CHUNK_OVERLAP` | 300 | Higher = better boundary coverage, more chunks |
-| `ENGRAM_HNSW_EF_SEARCH` | 200 | Higher = better recall, slower query |
-| `ENGRAM_LLM_RERANK_TOP_N` | 20 | Candidates sent to LLM reranker |
+| `EPIMNEME_EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Switch to BGE-large for higher quality |
+| `EPIMNEME_EMBEDDING_DIM` | 384 | Must match model (BGE-large=1024) |
+| `EPIMNEME_CHUNK_SIZE` | 1000 | Max chars per chunk (~1150 safe limit for MiniLM) |
+| `EPIMNEME_CHUNK_OVERLAP` | 300 | Higher = better boundary coverage, more chunks |
+| `EPIMNEME_HNSW_EF_SEARCH` | 200 | Higher = better recall, slower query |
+| `EPIMNEME_LLM_RERANK_TOP_N` | 20 | Candidates sent to LLM reranker |
 
 ### Pure-Math Recall Improvement Knobs (no new models)
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ENGRAM_BM25_SIGNAL_ENABLED` | `1` | In-process BM25 as additional RRF signal |
-| `ENGRAM_BM25_SIGNAL_WEIGHT` | `0.5` | RRF weight for BM25 ranked list |
-| `ENGRAM_ENTITY_SIGNAL_ENABLED` | `1` | Proper nouns + numbers overlap as RRF signal |
-| `ENGRAM_ENTITY_SIGNAL_WEIGHT` | `0.3` | RRF weight for entity-overlap list |
-| `ENGRAM_DATE_SIGNAL_WEIGHT` | `0.6` | RRF weight for date-proximity list (temporal queries) |
-| `ENGRAM_RECENCY_SIGNAL_WEIGHT` | `0.2` | RRF weight for session-recency list (recency queries) |
-| `ENGRAM_TURN_PAIR_SIGNAL_WEIGHT` | `0.15` | RRF weight for turn-pair-completeness list |
-| `ENGRAM_MAXSIM_ENABLED` | `0` | Token-level MaxSim rerank (ColBERT-style, same model) |
-| `ENGRAM_MAXSIM_TOP_N` | `20` | Candidates to rerank with MaxSim |
-| `ENGRAM_MAXSIM_CACHE_SIZE` | `2048` | LRU doc-embedding cache entries |
-| `ENGRAM_PRF_ENABLED` | `0` | Pseudo-relevance feedback (Rocchio, vague queries only) |
-| `ENGRAM_PRF_TOP_K` | `5` | Top-K results used for PRF term extraction |
-| `ENGRAM_PRF_N_TERMS` | `8` | Max expansion terms appended to FTS re-query |
-| `ENGRAM_PRF_FTS_WEIGHT` | `0.3` | RRF weight for PRF result list |
-| `ENGRAM_TIEBREAK_ENABLED` | `1` | Gap-aware tiebreaker (fires when top-2 gap ≤ eps) |
-| `ENGRAM_TIEBREAK_EPS` | `0.005` | Score-gap threshold to trigger tiebreaker |
-| `ENGRAM_MMR_ENABLED` | `1` | Session MMR diversification (counting queries only) |
-| `ENGRAM_MMR_LAMBDA` | `0.7` | Relevance weight in MMR (0=diversity, 1=relevance) |
-| `ENGRAM_MMR_SESSION_CAP` | `2` | Max chunks per session_id in output |
-| `ENGRAM_TEMPORAL_HARD_FILTER` | `0` | Pre-filter candidates to target-date window |
-| `ENGRAM_TEMPORAL_HARD_FILTER_SIGMA` | `3.5` | Window half-size in days |
+| `EPIMNEME_BM25_SIGNAL_ENABLED` | `1` | In-process BM25 as additional RRF signal |
+| `EPIMNEME_BM25_SIGNAL_WEIGHT` | `0.5` | RRF weight for BM25 ranked list |
+| `EPIMNEME_ENTITY_SIGNAL_ENABLED` | `1` | Proper nouns + numbers overlap as RRF signal |
+| `EPIMNEME_ENTITY_SIGNAL_WEIGHT` | `0.3` | RRF weight for entity-overlap list |
+| `EPIMNEME_DATE_SIGNAL_WEIGHT` | `0.6` | RRF weight for date-proximity list (temporal queries) |
+| `EPIMNEME_RECENCY_SIGNAL_WEIGHT` | `0.2` | RRF weight for session-recency list (recency queries) |
+| `EPIMNEME_TURN_PAIR_SIGNAL_WEIGHT` | `0.15` | RRF weight for turn-pair-completeness list |
+| `EPIMNEME_MAXSIM_ENABLED` | `0` | Token-level MaxSim rerank (ColBERT-style, same model) |
+| `EPIMNEME_MAXSIM_TOP_N` | `20` | Candidates to rerank with MaxSim |
+| `EPIMNEME_MAXSIM_CACHE_SIZE` | `2048` | LRU doc-embedding cache entries |
+| `EPIMNEME_PRF_ENABLED` | `0` | Pseudo-relevance feedback (Rocchio, vague queries only) |
+| `EPIMNEME_PRF_TOP_K` | `5` | Top-K results used for PRF term extraction |
+| `EPIMNEME_PRF_N_TERMS` | `8` | Max expansion terms appended to FTS re-query |
+| `EPIMNEME_PRF_FTS_WEIGHT` | `0.3` | RRF weight for PRF result list |
+| `EPIMNEME_TIEBREAK_ENABLED` | `1` | Gap-aware tiebreaker (fires when top-2 gap ≤ eps) |
+| `EPIMNEME_TIEBREAK_EPS` | `0.005` | Score-gap threshold to trigger tiebreaker |
+| `EPIMNEME_MMR_ENABLED` | `1` | Session MMR diversification (counting queries only) |
+| `EPIMNEME_MMR_LAMBDA` | `0.7` | Relevance weight in MMR (0=diversity, 1=relevance) |
+| `EPIMNEME_MMR_SESSION_CAP` | `2` | Max chunks per session_id in output |
+| `EPIMNEME_TEMPORAL_HARD_FILTER` | `0` | Pre-filter candidates to target-date window |
+| `EPIMNEME_TEMPORAL_HARD_FILTER_SIGMA` | `3.5` | Window half-size in days |
+| `EPIMNEME_TEMPORAL_PARTITION_ENABLED` | `1` | Structural reorder: in-window candidates first (day-precision temporal queries) — distinct from the hard filter above, not a drop |
+| `EPIMNEME_ASSEMBLY_BUDGET_CHARS` | `12000` | Total char budget for `assemble=true` context assembly |
+| `EPIMNEME_ASSEMBLY_K_SINGLE` | `5` | Assembly K for short, single-fact queries |
+| `EPIMNEME_ASSEMBLY_K_COUNTING` | `20` | Assembly K for counting/aggregation queries |
+| `EPIMNEME_ASSEMBLY_PARENT_EXPANSION` | `1` | Fetch same-session neighbor chunks during assembly (small-to-big expansion) |
 
-Compose file: `/docker/compose/dev/engram2.yml`
+Compose file: `docker-compose.yml` (gitignored, personal deployment — copy from `docker-compose.example.yml`)
 
 After changing config, rebuild and restart:
 ```bash
-cd /docker/compose/dev
-docker compose -f engram2.yml --env-file /docker/compose/.env up -d --build
+cd /data/emu/epimneme
+docker compose up -d --build
 # Wait ~10s then verify
-curl -s http://192.168.90.45:8000/health
+curl -s http://localhost:8000/health
 ```
 
 ---
@@ -181,15 +186,16 @@ curl -s http://192.168.90.45:8000/health
 | v120 | BGE-large | 800/200/ef50 | 0.860 | — | 0.3274 | — | +7 LME R@1, worse LoCoMo |
 | v301 | MiniLM | 900/100/ef50 | 0.852 | 0.763 | — | — | TF cap=2 fix |
 | v302 | MiniLM | 1000/300/ef200 | 0.852 | 0.763 | 0.3917 | — | Plateau, best pre-v4 |
-| **v402** | MiniLM | 1000/300/ef200 | **0.856** | **0.785** | **0.4167** | **0.6569** | Multi-signal RRF + MMR gate fix |
+| v402 | MiniLM | 1000/300/ef200 | 0.856 | 0.785 | 0.4167 | 0.6569 | Multi-signal RRF + MMR gate fix |
+| **v700** | MiniLM | 800/100/ef100 | **0.860** | — | — | — | Temporal slash-date fix + assembly (Phases 1-2, retrieval-neutral) + temporal partition (Phase 4); temporal-reasoning R@1 0.835→0.850 |
 
 **BEIR SciFact v402 (2026-05-12):** nDCG@10=0.6569, Recall@100=0.9350, Precision@10=0.0887, Any-hit@100=94.0% (282/300)
 For context: BM25 baseline ≈ 0.665, SentenceBERT ≈ 0.664, DPR ≈ 0.318 — Engram is at BM25 level on this domain-specific IR task.
 
 **v402 signals (all enabled by default):**
 - Phase A: BM25 (w=0.5) + entity overlap (w=0.3) fused via RRF
-- Phase B: MaxSim rerank (disabled by default, `ENGRAM_MAXSIM_ENABLED=1`)
-- Phase C: PRF expansion (disabled by default, `ENGRAM_PRF_ENABLED=1`)
+- Phase B: MaxSim rerank (disabled by default, `EPIMNEME_MAXSIM_ENABLED=1`)
+- Phase C: PRF expansion (disabled by default, `EPIMNEME_PRF_ENABLED=1`)
 - Phase D: Date-proximity Gaussian boost (w=0.6), session recency (w=0.2), turn-pair (w=0.15)
 - Phase E: MMR diversification (enabled, gate: fires for non-counting queries)
 - Phase F: Gap-aware tiebreaker
@@ -226,7 +232,7 @@ For context: BM25 baseline ≈ 0.665, SentenceBERT ≈ 0.664, DPR ≈ 0.318 — 
 Gemma4:31b via Ollama, and evaluates generated answers against gold.
 
 ```bash
-cd /docker/appdata/engram
+cd /data/emu/epimneme
 
 # Full 500q E2E (top-10 chunks → Gemma4, ~55min)
 python3 benchmarks/lme_e2e_bench.py \

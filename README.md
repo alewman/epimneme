@@ -4,7 +4,7 @@
 
 **Persistent memory for AI coding agents.** PostgreSQL + pgvector backend, accessed via MCP or REST. Stop re-explaining your codebase every session.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![CI](https://github.com/alewman/epimneme/actions/workflows/ci.yml/badge.svg)](https://github.com/alewman/epimneme/actions)
 
@@ -18,16 +18,18 @@ Agents connect via **MCP** (VS Code, Cursor, Claude Desktop, etc.) or through a 
 
 ## Benchmarks
 
-On **LongMemEval** (500 questions, 6 question types) with **no LLM reranking** and **no benchmark-specific tuning**:
+On **LongMemEval-S** (500 questions, 6 question types) with **no LLM reranking** and **no benchmark-specific tuning**:
 
 | Metric | Epimneme (no LLM) |
 |--------|------------------|
-| Recall @ 1   | 79.0% |
-| Recall @ 5   | 96.0% |
-| Recall @ 10  | **98.8%** |
+| Recall @ 1   | 86.0% |
+| Recall @ 5   | 96.8% |
+| Recall @ 10  | **98.2%** |
 | Recall @ 50  | **100%** |
-| NDCG @ 10    | 0.887 |
+| NDCG @ 10    | 0.894 |
 | LLM cost     | **$0 / query** |
+
+Retrieval alone (the numbers above) is only half the story — see [`assembly.py`](src/epimneme/assembly.py) for a deterministic, still-$0 context-assembly stage (`assemble=true` on search / the MCP `recall` tool) that precomputes date arithmetic, prunes superseded facts, and groups by session before handing context to a reader model.
 
 See [benchmarks/BENCHMARK_RESULTS.md](benchmarks/BENCHMARK_RESULTS.md) for the full write-up, including LoCoMo numbers and a per-category breakdown against [MemPalace](https://github.com/Chessnl/mempalace).
 
