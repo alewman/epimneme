@@ -172,7 +172,7 @@ Keep the story intact: **$0 per query, no LLM in the retrieval loop, no benchmar
 
 ## 6. Open Questions for the User (ask before Phase 0.4)
 
-1. Which Ollama endpoint + reader model should e2e use? (Old default `10.10.20.167:11434` / `gemma4:31b` may be gone.) **Still open as of the Sept 2026 session — Phase 3 is on hold for this.**
+1. Which Ollama endpoint + reader model should e2e use? **Answered 2026-09-07: `http://10.10.20.167:11434` (plain HTTP, port 11434), model `qwen3.8:27b` — verified responding with `num_ctx=16384`. `gemma4:31b` is gone; pass `--ollama-url` and `--model`. Phase 3 is unblocked.**
 2. Is Phase 6 (preference extractor) wanted, or skip? **Answered: skip.**
 3. Should the final docs sync (Phase 7) also bump the version to 0.8.0 for a PyPI release? **Answered: no, stayed at 0.7.0.**
 
@@ -309,3 +309,67 @@ Read this before touching retrieval again — several false leads were already r
    "Weight Tuning Exploration" and "Near-tie Gap Analysis" sections for the exact
    value and re-derive why it was chosen before changing anything nearby.
 4. Phase 3 (e2e reader) still needs a live Ollama endpoint from the user.
+
+### Addendum — 2026-09-07 session (chunking investigation; pick up here)
+
+**Decisions from Aubrey this session:** keep the current embedder (no goal-post moves);
+pursue "the chunking fix". Committed tonight: the reader-side fix (see CHANGELOG
+"Fixed": harness `[:2000]` text cap → full text; e2e `num_ctx` → 16384). The
+embedder-side question is *not* decided — the decisive experiment is written but
+could not finish (below).
+
+**What the "chunking" problem actually is** (root cause 3 in §1 was mis-described):
+- Ingest stores whole turn-pairs; there is no 1000-char chunker on the LME path.
+- Reader side: the harness clipped stored text at 2,000 chars (65.7% of v700 top-10
+  items) and the e2e run never set `num_ctx`. Fixed. Payoff needs an e2e rerun
+  (Phase 3 — now unblocked, see §6 Q1). Expect the biggest movement in
+  single-session-assistant, whose gold turns are the ones with answers in the tail.
+- Embedder side: MiniLM window is 256 tokens (`SentenceTransformer.max_seq_length`);
+  LME gold turn-pairs are median ≈630 tokens, 94.8% > 256; all docs 79% > 256
+  (`benchmarks/diagnose_chunk_length.py`, corpus stats in its docstring). Only the
+  semantic channel is affected — FTS/BM25/entity see full content. Gold recall@10
+  drops with length (97.6% → 88.3% → 77.9% across ≤256 / 257–512 / >512 tokens;
+  multi-session >512: 62.1%), but length is confounded with question type, so that
+  is suggestive, not causal. The answer *start* is inside the window in 53/54
+  assistant-answer cases, consistent with the earlier "position isn't the
+  mechanism" finding — the live hypothesis is **dilution**: a short answer-bearing
+  user statement packed with a long generic assistant reply blurs the vector.
+- Production data is short (364 live projects, 3,385 memories, median 441 chars,
+  2% > 1,300 chars), so an embedder-side fix protects imported transcripts and
+  future long memories more than today's data. Bulk-import chat chunks use
+  `User:` / `Assistant:` prefixes (no brackets) — a role-aware chunker must accept
+  both that and the `[USER]:`/`[ASSISTANT]:` transcript convention.
+
+**The decisive experiment (ready, not yet run to completion):**
+`benchmarks/sem_chunking_sim.py` — semantic-channel-only ranking of each question's
+own haystack under four indexing strategies (`head` = today, `win` = 254-token
+windows max-pooled, `role` = {pair, user turn, assistant turn} max-pooled,
+`role_win`), whole population, per question type, reporting turn-level found@10/50
+and session-level R@1/R@10. Run it stratified (`every=5`, offsets 0 and 2) once the
+CPU is free. **Go/no-go rule:** productionize (extra chunk vectors in a child table,
+max-pooled into `search_semantic`, memory rows untouched, config-gated) only if a
+variant lifts gold turn found@10 materially with session R@1 not lower; then
+validate on a real LME-S run plus LoCoMo + BEAM per ground rule 1. If flat, drop the
+embedder-side idea and keep only the harness fix.
+
+**Why it didn't finish tonight:** the host was saturated by 30 `pypy3` z80
+conformance jobs from `/data/emu/z80-python` (load avg 60–100 on 32 cores). The
+in-container embedder fell to ~4 long-encodes/s and *got slower with more threads*;
+two 4-hour passes produced nothing. Aubrey expects those jobs done ~03:00–04:00
+2026-09-07. Check `uptime` before launching anything embedding-heavy.
+
+**Environment gotchas found tonight:**
+- Host Python was upgraded 3.10 → 3.14; `aiohttp`/`pytest` were stranded in
+  `~/.local/lib/python3.10/site-packages`. Neither the host nor the app container
+  can run the harness or pytest as-is. A gitignored `.venv` (3.14, torch-cpu,
+  `-e .[dev]`, aiohttp, pytest-mock) was created at repo root — use
+  `.venv/bin/python` / `.venv/bin/pytest`. `run_bench.sh` calls bare `python3`;
+  activate the venv (or prefix `PATH=$PWD/.venv/bin:$PATH`) before using it.
+- `docker run` from `engram:latest` for ad-hoc scripts needs `--no-healthcheck`:
+  the image healthcheck probes :8000 and the host's `autoheal` container restarts
+  anything that fails it.
+- `all-MiniLM-L6-v2`'s `tokenizer.json` has a baked-in 128-token truncation; raw
+  `tokenizers` counts are capped unless `tok.no_truncation()` is called. The first
+  pass of tonight's length analysis was invalidated by this.
+- The local docker container named `ollama` is an empty shell (no binary, no port).
+  The real endpoint is on 10.10.20.167 (see §6 Q1).

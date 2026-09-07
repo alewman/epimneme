@@ -233,6 +233,7 @@ async def process_question(
     semaphore: asyncio.Semaphore,
     ks: list[int],
     existing_projects: set[str] | None = None,
+    text_cap: int = 0,
 ) -> dict | None:
     """Process a single LME question. Returns result dict or None if skipped."""
     async with semaphore:
@@ -302,7 +303,13 @@ async def process_question(
             matching = [r for r in results if r.get("subject") == cid]
             ranked_items.append({
                 "corpus_id": cid,
-                "text": matching[0]["content"][:2000] if matching else "",
+                # Full text by default. The old hard [:2000] cap silently clipped
+                # two-thirds of top-10 items (LME turn-pairs are ~2,000-3,400 chars),
+                # so the e2e reader never saw the tail of most retrieved turns.
+                "text": (
+                    (matching[0]["content"][:text_cap] if text_cap else matching[0]["content"])
+                    if matching else ""
+                ),
                 "score": matching[0].get("score", 0) if matching else 0,
             })
 
@@ -368,6 +375,7 @@ async def run_benchmark(
     workers: int = 1,
     filter_ids: list[str] | None = None,
     skip_ingest: bool = False,
+    text_cap: int = 0,
 ):
     """Run the full LongMemEval benchmark against engram."""
     data = load_data(data_file)
@@ -416,6 +424,7 @@ async def run_benchmark(
         process_question(
             entry, i + 1, len(data), client, granularity,
             n_results, cleanup, semaphore, ks, existing_projects,
+            text_cap=text_cap,
         )
         for i, entry in enumerate(data)
     ]
@@ -589,6 +598,16 @@ if __name__ == "__main__":
         default=8,
         help="Number of concurrent workers (default: 8)",
     )
+    parser.add_argument(
+        "--text-cap",
+        type=int,
+        default=0,
+        help=(
+            "Max chars of each ranked item's text to store in the results file "
+            "(0 = full text, the default). Pre-Sept-2026 result files were written "
+            "with an implicit cap of 2000; pass --text-cap 2000 to reproduce them."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.out:
@@ -610,5 +629,6 @@ if __name__ == "__main__":
             workers=args.workers,
             filter_ids=args.filter_ids,
             skip_ingest=args.skip_ingest,
+            text_cap=args.text_cap,
         )
     )

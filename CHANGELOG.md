@@ -15,6 +15,8 @@ All notable changes to this project will be documented here. The format is based
 - OCI image labels on the Dockerfile.
 
 ### Fixed
+- `benchmarks/longmemeval_bench.py` silently stored only the first 2,000 chars of each ranked item's text (`content[:2000]`). LME turn-pairs run ~2,000–3,400 chars, so 65.7% of the top-10 texts in the v700 run were clipped — and `lme_e2e_bench.py` feeds that stored text to the reader, so the e2e reader never saw the tail of most retrieved turns (the plan's "assistant turn truncation" root cause was this, not ingest-side chunking; the ingest path stores whole turn-pairs). Full text is now the default; `--text-cap N` reproduces the old files.
+- `benchmarks/lme_e2e_bench.py` never set Ollama's `num_ctx`, so requests ran at Ollama's default context (4,096 tokens in current releases) — smaller than ten full turn-pairs plus the prompt — and Ollama silently drops the *front* of an over-long prompt. Now sends `num_ctx=16384` by default (`--num-ctx`). Prior e2e numbers were therefore measured on a reader that could not see all of its context; treat them as a floor.
 - `fusion.extract_logical_date` (used by the temporal boost) only matched ISO-hyphenated dates; real LongMemEval haystacks use slash-delimited dates with a weekday/time suffix (`[Date: 2023/05/20 (Sat) 09:05]`), so the temporal boost was silently falling back to `created_at` (ingestion wall-clock time) on every benchmark memory — effectively a no-op on the exact data it's benchmarked against.
 - `fusion.mmr_rerank` was O(n·k²) in the requested result limit (measured: 0.8s → 174s going from `limit=10` to `limit=200` on a ~2,500-memory project). Fixed to O(n·k) by maintaining a running max-similarity-to-selected per candidate instead of recomputing it from scratch every iteration. Output is unchanged (verified by differential test against the original algorithm).
 - Two leftover hardcoded `engram.*` references from the Engram→Epimneme rename that broke a fresh container build entirely: the Dockerfile's `CMD` (`engram.server:app`) and `migrations/runner.py`'s `importlib.import_module(f"engram.migrations.{name}")`.
@@ -32,6 +34,7 @@ All notable changes to this project will be documented here. The format is based
 - Private domain and hostnames from documentation.
 
 ### Investigated (no change)
+- Embedder-side chunking (2026-09-06/07): `all-MiniLM-L6-v2` reads only the first 256 tokens; 79% of LME-S turn-pairs and 94.8% of answer-bearing ones are longer (gold median ≈630 tokens), so the semantic channel indexes under half of most gold documents. Gold-turn recall@10 on the v700 run falls with length (≤256 tok: 97.6%, 257–512: 88.3%, >512: 77.9%; multi-session >512: 62.1%). Whether sub-window or role-split (`[USER]`/`[ASSISTANT]` embedded separately) chunking closes that gap is an open, testable question — see `benchmarks/sem_chunking_sim.py` (semantic-channel-only simulation, all four variants) and `benchmarks/diagnose_chunk_length.py`. No production change made yet.
 - Phase 5 (two-stage session-then-chunk retrieval at LME-M scale): NO-GO. Best case tied flat chunk search (0.0pp R@1 gain, well short of the +3pp bar); narrower session cuts regressed R@10 recall_all by up to 8.4pp. See `benchmarks/lme_m_hierarchical_experiment.py` and its commit message for the full results table.
 
 ## [0.7.0] — 2026-04

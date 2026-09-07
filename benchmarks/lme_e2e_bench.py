@@ -39,6 +39,11 @@ import aiohttp
 
 OLLAMA_URL = "http://10.10.20.167:11434"
 OLLAMA_MODEL = "gemma4:31b"
+# Ollama's default context window (4096 in current releases, 2048 in older ones)
+# is smaller than 10 full LME turn-pairs plus the prompt, and Ollama truncates the
+# *front* of an over-long prompt silently. Set explicitly so the reader actually
+# sees every chunk it is given. Overridable with --num-ctx.
+OLLAMA_NUM_CTX = 16384
 EPIMNEME_URL = "http://192.168.90.45:8000"
 
 ANSWER_PROMPT = """\
@@ -230,7 +235,7 @@ async def _chat(session: aiohttp.ClientSession, prompt: str, max_tokens: int = 8
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "think": False,
-        "options": {"temperature": 0, "num_predict": max_tokens},
+        "options": {"temperature": 0, "num_predict": max_tokens, "num_ctx": OLLAMA_NUM_CTX},
     }
     last_exc: Exception = RuntimeError("no attempts")
     for attempt in range(retries):
@@ -548,6 +553,7 @@ async def run(
 # =============================================================================
 
 def main() -> None:
+    global OLLAMA_NUM_CTX
     ap = argparse.ArgumentParser(description="End-to-end LME benchmark via Ollama")
     ap.add_argument(
         "--retrieval-results", required=True,
@@ -587,12 +593,18 @@ def main() -> None:
     )
     ap.add_argument("--model", default=OLLAMA_MODEL, help="Ollama model name")
     ap.add_argument(
+        "--num-ctx", type=int, default=OLLAMA_NUM_CTX,
+        help=f"Ollama context window in tokens (default: {OLLAMA_NUM_CTX}); must fit "
+             "top-k full-length chunks plus the prompt or Ollama silently drops the front",
+    )
+    ap.add_argument(
         "--rescore-only", action="store_true",
         help="Re-score an existing output JSONL (--out) without regenerating answers. "
              "Applies _abs fix and optionally runs --judge on misses. "
              "Writes rescored output to --out + '.rescored.jsonl'.",
     )
     args = ap.parse_args()
+    OLLAMA_NUM_CTX = args.num_ctx
 
     # --rescore-only mode: re-score existing JSONL in-place
     if args.rescore_only:
