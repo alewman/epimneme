@@ -120,6 +120,7 @@ class EngramClient:
         kind: str | None = None,
         tags: str | None = None,
         reference_date: str | None = None,
+        debug: bool = False,
     ) -> dict:
         """Search memories. Returns {count, total, has_more, results: [...]}."""
         session = await self._ensure_session()
@@ -132,6 +133,8 @@ class EngramClient:
             params["tags"] = tags
         if reference_date:
             params["reference_date"] = reference_date
+        if debug:
+            params["debug"] = "true"
 
         async def _do():
             async with session.get(f"{self.base_url}/api/memories/search", params=params) as resp:

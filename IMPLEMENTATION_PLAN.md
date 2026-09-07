@@ -172,6 +172,140 @@ Keep the story intact: **$0 per query, no LLM in the retrieval loop, no benchmar
 
 ## 6. Open Questions for the User (ask before Phase 0.4)
 
-1. Which Ollama endpoint + reader model should e2e use? (Old default `10.10.20.167:11434` / `gemma4:31b` may be gone.)
-2. Is Phase 6 (preference extractor) wanted, or skip?
-3. Should the final docs sync (Phase 7) also bump the version to 0.8.0 for a PyPI release?
+1. Which Ollama endpoint + reader model should e2e use? (Old default `10.10.20.167:11434` / `gemma4:31b` may be gone.) **Still open as of the Sept 2026 session — Phase 3 is on hold for this.**
+2. Is Phase 6 (preference extractor) wanted, or skip? **Answered: skip.**
+3. Should the final docs sync (Phase 7) also bump the version to 0.8.0 for a PyPI release? **Answered: no, stayed at 0.7.0.**
+
+---
+
+## 7. Session Handoff — 2026-09-06 (start here for a clean session)
+
+Phases 0/1/2/4/5/7 landed (see CHANGELOG.md and git log — `df2ef32`..`aa8dce8`). Phase 3 is
+still blocked on an Ollama endpoint. Phase 6 skipped. This section is about what came
+*after* that: a deep-dive into why LME-S turn-level evidence completeness sits around
+70-90% instead of near-100%, done in response to production actually running this code.
+Read this before touching retrieval again — several false leads were already run down.
+
+### What's proven
+
+1. **The `recall_all@k` "9.4%" number from the first pass of this investigation was
+   overwhelmingly a metric-definition artifact**, not a retrieval problem — it counted
+   every turn in an answer session as required evidence, when usually only one turn
+   contains the answer. Fixed by scoring against the dataset's real per-turn
+   `has_answer` ground-truth flag (`benchmarks/diagnose_evidence_gap3.py`) instead of a
+   substring-match heuristic (which had a 45% fallback-contamination rate — see below).
+   **True turn-level evidence_completeness@10 is 68-98% across question types.**
+   `multi-session` (~68-75%, exact number moved after a real bug fix, see below) and
+   `single-session-preference` (~68%, noisy, n=30, don't trust this one as strongly)
+   are the two soft spots. Confirmed this metric actually matters: joined it against
+   real e2e answer correctness (`results_engram_lme_e2e_v402_...jsonl`, matched against
+   its own retrieval snapshot, not a different one) — completeness=1.0 questions hit
+   70.9%, partial completeness 17.9%, zero completeness 3.7%. It's a real target.
+
+2. **Two structural fixes ruled out, both confirmed on real (`has_answer`) gold, not
+   the contaminated substring heuristic:**
+   - Session-diversity reranking (hard cap or continuous penalty on how many slots one
+     session can take in top-10) — tested both ways, **monotonically worse at every
+     setting, for every question type, including multi-session itself.** Do not
+     revisit this without new evidence; it was checked twice.
+   - Embedding-truncation position (does the has_answer content sit past the
+     ~1300-char / 256-token MiniLM window?) — **not the mechanism**: found and missed
+     turns have statistically identical answer-position offsets (median 39 chars into
+     the turn, both groups). The truncation issue is real (see below) but isn't what's
+     causing *these specific* misses.
+
+3. **A genuine RRF fusion pathology exists, with one clean proof case**
+   (`benchmarks/results_channel_diag_20260906.jsonl`, built with a new opt-in
+   `debug=` param on `manager.recall()` / `GET .../search?debug=true` — see
+   `aa8dce8`). Question `gpt4_15e38248`: the item that won the top-10 slot ranked
+   127th/128th/127th on semantic/entity/turn_pair but 2nd on BM25; the actual answer
+   turn ranked 8th on those same three signals but 103rd on BM25. **9 of 25 sampled
+   misses (multi-session + temporal-reasoning) show this same shape**: semantic +
+   entity (an independent *lexical* signal — substring-matches proper
+   nouns/numbers, not embedding-derived, see correction below) agree the gold turn
+   is good; BM25 alone disagrees, sometimes by 100+ ranks, and drags the fused
+   result down enough to lose.
+
+   **What this is NOT**: not "3 independent signals vs. 1" — `turn_pair_rank` is
+   confirmed to be a passenger, not a vote (it's a stable sort on a
+   near-universally-true boolean, so it just inherits the semantic+fulltext merge
+   order). It's closer to "semantic + entity (lexical) vs. BM25 (different
+   lexical)," a 2-vs-1 with the two agreeing signals arrived at independently by
+   different mechanisms (embedding similarity vs. exact substring counting).
+
+   **What's NOT established**: prevalence (9/25 carries roughly a ±19pp interval —
+   hypothesis-generating, not a real rate) and payoff size. **The proposed "simulate
+   a fix against this data" idea is invalid as designed** — the sample is
+   selected-for-being-a-miss, so any rule fit to it succeeds trivially, and there
+   are zero cases in it where BM25 was *correctly* decisive, so there's no way to
+   even detect a regression. A real test needs fresh samples of both misses and
+   hits, specifically including hits where BM25 was the deciding signal.
+
+   **Production-risk consideration, not yet resolved**: down-weighting BM25 would
+   likely help LongMemEval (paraphrased natural language, lexical overlap is often
+   noise) but is a plausible net-negative for real coding-agent traffic, where
+   queries for identifiers/filenames/error strings are exactly the case where BM25
+   being the lone dissenter means BM25 is right. The benchmark cannot see this cost
+   — it doesn't contain that query distribution. Any fix needs production-realistic
+   validation, not just an LME-S number.
+
+   **Architectural consideration**: RRF's insensitivity to score *magnitude* (only
+   rank matters) is what took LoCoMo from 61.5%→91.4% when it replaced the old
+   linear merge (see BENCHMARK_RESULTS.md, April 2026). A "consensus override" that
+   lets agreement between channels override a single channel's rank reintroduces
+   exactly the magnitude-sensitivity RRF was adopted to escape. Not disqualifying,
+   but it means this change is closer to the architectural core than it looks —
+   treat it with the same care as touching the RRF weights themselves (ground rule
+   6 territory, even though it's technically a new mechanism, not a weight change).
+
+4. **The majority bucket is bigger and harder than the BM25 finding**: 14 of 25
+   sampled misses are "uniformly weak" — no channel ranks the gold turn well,
+   including one case absent from *every* channel's candidate list entirely. This
+   points at `all-MiniLM-L6-v2` itself (a small, dated embedding model chosen for
+   MemPalace comparability, not quality) as the real ceiling. No fusion-stage change
+   touches this bucket. This is the bigger project, not a quick win — matches the
+   embedding-profile-swap discussion from way back (`EPIMNEME_ARCHITECTURE_REVIEW.md`),
+   including the standing caution that a model swap invalidates the LoCoMo apples-to-
+   apples comparison unless the old encoder is pinned as a named "comparison" config.
+
+### Bugs fixed during this investigation (already committed, `aa8dce8` and earlier)
+
+- `_abs` (abstention-variant) questions are separate dataset entries with their own
+  haystacks; an early pass in this investigation looked up the base question first,
+  silently scoring 8 questions against the wrong haystack. Fixed (exact-ID lookup
+  first). This moved multi-session's real number by several points — if you rerun
+  any of the `diagnose_evidence_gap*.py` scripts, use gap3, not gap2 or gap1, they
+  have this bug.
+- Null-model math for "is the correct session enriched above chance in top-10 when
+  its specific turn is missing" needs the *precise* per-question hypergeometric
+  (actual per-session item counts in that question's own pool), not a coarse
+  `10/n_distinct_sessions` approximation — the coarse version overstated enrichment
+  1.34x vs the correct 1.09x (barely above chance).
+
+### Concrete next steps, in priority order
+
+1. **If continuing the BM25 thread**: design a properly-controlled sample first —
+   misses AND hits, across question types, specifically including hits where BM25
+   was the deciding signal — before proposing any weight or fusion-rule change.
+   Validate any candidate fix against a held-out sample, not the discovery sample.
+   Consider testing it against a synthetic identifier/filename-style query set (or
+   real production query logs, if available and consented) before trusting an
+   LME-S-only result, given the production-risk concern above.
+2. **The embedder ceiling (56% of misses) is probably the higher-value target long
+   term**, but it's a bigger lift (touches `embedding_model`/`embedding_dim` config,
+   needs the pinned-comparison-config safeguard, needs re-validation across LME-S/
+   LoCoMo/BEAM). Don't start this casually.
+3. **Ask the user to identify the "magic number."** Aubrey's own recollection this
+   session: *"I think we did all of these different ways to just increase our
+   score... I feel we stuck a magic number in here too that seemed to increase our
+   retrieval quality, but if we changed anything in the pipeline, the magic number
+   would need to be redone or it would likely tank everything."* Likely candidates
+   given the documented tuning history in `BENCHMARK_RESULTS.md` (the v0.9/v0.91/
+   v1.00 temporal-boost tuning that turned out to be mostly noise; the RRF weight
+   sweep table; `tiebreak_eps=0.005`): `EPIMNEME_RRF_KEYWORD_WEIGHT` (0.75),
+   `bm25_signal_weight` (0.5, newly relevant given tonight's finding),
+   `temporal_hard_filter_sigma`/boost `sigma`/`boost_cap`, or `tiebreak_eps`. Don't
+   guess which one — ask, or grep the tuning history in BENCHMARK_RESULTS.md's
+   "Weight Tuning Exploration" and "Near-tie Gap Analysis" sections for the exact
+   value and re-derive why it was chosen before changing anything nearby.
+4. Phase 3 (e2e reader) still needs a live Ollama endpoint from the user.
