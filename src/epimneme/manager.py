@@ -607,6 +607,7 @@ class MemoryManager:
         tags: Optional[list[str]] = None,
         limit: int = 20,
         reference_date: Optional[str] = None,
+        debug: Optional[dict] = None,
     ) -> list[MemoryResult]:
         """Search memories with multi-signal RRF hybrid fusion.
 
@@ -626,6 +627,12 @@ class MemoryManager:
          11. Temporal hard-filter (if enabled + day-precision date resolved).
          12. Sort, truncate, fire decay updates.
          13. Temporal partition rerank (structural, day-precision only).
+
+        `debug`: if a dict is passed, it is populated in-place with
+        `debug["channels"] = {channel_name: [corpus_id, ...]}` — each
+        active signal's PRE-FUSION ranked list, keyed by memory id, in rank
+        order. Diagnostic only; does not affect the returned results or any
+        existing caller's behavior when omitted.
         """
         project_id = None
         if project_name:
@@ -681,14 +688,17 @@ class MemoryManager:
         kw_weight = adaptive_keyword_weight(query, self.config.rrf_keyword_weight)
         rrf_lists: list[list[MemoryResult]] = [semantic_results, fulltext_results]
         rrf_weights: list[float] = [self.config.rrf_vector_weight, kw_weight]
+        rrf_channel_names: list[str] = ["semantic", "fulltext"]
 
         if self.config.bm25_signal_enabled and candidates:
             rrf_lists.append(bm25_rank(query, candidates))
             rrf_weights.append(self.config.bm25_signal_weight)
+            rrf_channel_names.append("bm25")
 
         if self.config.entity_signal_enabled and candidates:
             rrf_lists.append(entity_overlap_rank(query, candidates))
             rrf_weights.append(self.config.entity_signal_weight)
+            rrf_channel_names.append("entity")
 
         # Date-proximity signal: resolve target date from query
         _target_date: _date | None = None
@@ -697,6 +707,7 @@ class MemoryManager:
         if _target_date is not None:
             rrf_lists.append(date_proximity_rank(candidates, _target_date))
             rrf_weights.append(self.config.date_signal_weight)
+            rrf_channel_names.append("date_proximity")
 
         # Session-recency signal: added after ordinals are known; placeholder here —
         # we defer to step 5 where ordinals are populated.
@@ -705,6 +716,14 @@ class MemoryManager:
         if candidates:
             rrf_lists.append(turn_pair_rank(candidates))
             rrf_weights.append(self.config.turn_pair_signal_weight)
+            rrf_channel_names.append("turn_pair")
+
+        if debug is not None:
+            debug["channels"] = {
+                name: [mr.memory.id for mr in lst]
+                for name, lst in zip(rrf_channel_names, rrf_lists)
+            }
+            debug["channel_weights"] = dict(zip(rrf_channel_names, rrf_weights))
 
         # ── 4. RRF fusion over all ranked lists ─────────────────────────
         fused = rrf_fuse(*rrf_lists, weights=rrf_weights)
@@ -756,6 +775,10 @@ class MemoryManager:
             # Session-recency as additional RRF input (now that ordinals are known)
             if has_recency_intent(query) and candidates:
                 recency_list = session_recency_rank(candidates, ordinals)
+                if debug is not None:
+                    debug.setdefault("channels", {})["session_recency"] = [
+                        mr.memory.id for mr in recency_list
+                    ]
                 recency_fused = rrf_fuse(recency_list, weights=[self.config.recency_signal_weight])
                 for mid, mr in recency_fused.items():
                     if mid in fused:

@@ -395,6 +395,7 @@ async def api_recall(
     offset: int = Query(default=0, ge=0),
     deep: bool = False,
     assemble: bool = False,
+    debug: bool = False,
     reference_date: Optional[str] = None,
     auth: AuthContext = Depends(get_auth),
 ):
@@ -407,6 +408,8 @@ async def api_recall(
     if deep:
         bundle = await mgr.get_context(query, project_name=project)
         return {"context": bundle.to_prompt() or f"No context found for: {query}"}
+
+    debug_info: Optional[dict] = {} if debug else None
 
     assembled_context = None
     if assemble:
@@ -426,7 +429,7 @@ async def api_recall(
     else:
         # Fetch limit+offset so we can slice for offset-based pagination
         fetch_count = limit + offset
-        results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=fetch_count, reference_date=reference_date)
+        results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=fetch_count, reference_date=reference_date, debug=debug_info)
 
     page = results[offset : offset + limit]
     # total is a lower bound — true total requires a separate count query
@@ -458,6 +461,8 @@ async def api_recall(
     }
     if assembled_context is not None:
         response["assembled_context"] = assembled_context
+    if debug_info:
+        response["debug"] = debug_info
     return response
 
 

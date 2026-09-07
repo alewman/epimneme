@@ -258,6 +258,34 @@ class TestMemoryCRUD:
         assert results[0].score > single_rrf
 
     @pytest.mark.asyncio
+    async def test_recall_debug_none_by_default(self, mock_manager, mock_store):
+        """Omitting debug must not change recall()'s behavior or return value."""
+        mem = _mem("Found item")
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+
+        results = await mock_manager.recall("Found")
+        assert len(results) == 1  # unchanged from the non-debug test above
+
+    @pytest.mark.asyncio
+    async def test_recall_debug_populates_channels(self, mock_manager, mock_store):
+        # mock_manager runs with embeddings disabled (see conftest), so the
+        # semantic channel is legitimately empty here — exercised via fulltext.
+        mem = _mem("Found item")
+        mr_ft = MemoryResult(memory=mem, score=0.8, source="fulltext")
+        mock_store.search_semantic.return_value = []
+        mock_store.search_fulltext.return_value = [mr_ft]
+
+        debug: dict = {}
+        results = await mock_manager.recall("Found", debug=debug)
+        assert len(results) == 1  # debug is purely additive
+        assert "fulltext" in debug["channels"]
+        assert mem.id in debug["channels"]["fulltext"]
+        assert "semantic" in debug["channels"]
+        assert debug["channels"]["semantic"] == []
+
+    @pytest.mark.asyncio
     async def test_recall_assembled_empty(self, mock_manager, mock_store):
         mock_store.search_fulltext.return_value = []
         mock_store.search_semantic.return_value = []
