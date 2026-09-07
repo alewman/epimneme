@@ -568,3 +568,45 @@ Every configuration ties flat at best and regresses R@10 for narrower session cu
 *Results: `results_engram_lme_rrf_final.jsonl`, `results_engram_locomo_top10_final.json` (April 2026); `results_engram_lme_v700-baseline_20260904.jsonl`, `results_lme_m_hierarchical_experiment_20260905.jsonl` (September 2026, local only — see `.gitignore`)*
 *Pre-RRF results: `results_engram_lme_session_full.jsonl`, `results_engram_lme_clean_nodedup.jsonl`, `results_engram_locomo_full.json`, `results_engram_locomo_top10.json`*
 *Run dates: April 7–8, 2026; September 4–5, 2026*
+
+### Embedder-side chunking simulation (2026-09-07): NO-GO
+
+**Question.** `all-MiniLM-L6-v2` embeds only the first 256 tokens; 94.8% of LME-S gold
+turn-pairs are longer (median ≈630 tokens) and gold-turn recall@10 on v700 falls with
+length (≤256 tok 97.6% → >512 tok 77.9%; multi-session >512: 62.1%). Does indexing
+sub-chunks close that gap? Hypothesis under test: *dilution* — a short answer-bearing
+user statement packed with a long generic assistant reply blurs the vector.
+
+**Method.** `benchmarks/sem_chunking_sim.py`: semantic channel *only*, production
+embedder, each question ranked against its own full haystack; four indexing variants,
+doc score = max over its chunk vectors. Whole population (hits and misses), stratified
+200 of 500 questions (every 5th, offsets 0 and 2), ~350k unique chunk encodes.
+
+| Variant | gold turns in top-10 (n≈354) | session R@1 (n=200) |
+|---|---|---|
+| `head` — one vector, first 256 tokens (today) | 76.3% | 84.5% |
+| `win` — 254-token sliding windows, max-pooled | 75.7% | 86.0% |
+| `role` — {pair, `[USER]` turn, `[ASSISTANT]` turn}, max-pooled | 78.5% | 86.0% |
+| `role_win` — role chunks, each windowed | 79.1% | 88.5% |
+
+Per type, turn@10 pooled across both passes (head → best variant):
+knowledge-update 89.3% → 98.2% (`role`); multi-session 67.4% → 68.9% (`role`);
+temporal-reasoning 73.8% → 77.7% (`role_win`); single-session-user 88.5% → 92.3%;
+single-session-assistant 100% → 100%; single-session-preference 10/15 → 11/15.
+
+**Reading.** Multi-session — the bucket the length gradient pointed at and the
+evidence-completeness soft spot — does not move under any chunking variant, and the two
+stratified passes disagree on the sign for temporal and preference. The overall
+`role_win` lift (+2.8pp turn@10, +4.0pp session R@1) is inside the ~±4.5pp sampling
+noise of a 354-turn sample and is concentrated in knowledge-update, which is already
+at R@10 = 1.0 in the fused system. Plain windowing (`win`) is slightly *negative* on
+turn recall: long distractor documents get extra shots too. Conclusion: the length
+gradient was confounded with question type, not caused by truncation/dilution; these
+long gold turns are the "uniformly weak" embedder-ceiling bucket from the 2026-09-06
+handoff, and no fusion- or chunking-stage change reaches them.
+
+**Decision.** Do not productionize sub-chunk embeddings (child vector table, ~3× HNSW
+rows, backup/restore + re-embed plumbing, three-benchmark re-validation) for a gain
+this small and this far from the target. Revisit only alongside an embedder change.
+The reader-side fix (harness text cap + Ollama `num_ctx`, commit `f3cc453`) stands and
+is the part of "the chunking fix" that pays; its payoff is measured by Phase 3.

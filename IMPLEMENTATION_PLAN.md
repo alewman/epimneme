@@ -340,7 +340,16 @@ could not finish (below).
   `User:` / `Assistant:` prefixes (no brackets) — a role-aware chunker must accept
   both that and the `[USER]:`/`[ASSISTANT]:` transcript convention.
 
-**The decisive experiment (ready, not yet run to completion):**
+**RESOLVED 2026-09-07 — NO-GO.** The simulation below ran to completion once the CPU
+freed up (200 stratified questions, ~68 min/pass on ~10 cores). Result: best variant
+(`role_win`) lifts semantic-channel gold-turn recall@10 76.3%→79.1% and session R@1
+84.5%→88.5%; multi-session flat (67.4%→68.9%); `win` alone slightly negative on turn
+recall; passes disagree on sign for temporal/preference. Inside noise, wrong bucket —
+do not productionize. Full table and reading in `benchmarks/BENCHMARK_RESULTS.md`.
+**Next: Phase 3** (e2e rerun on the v700 retrieval results with the fixed harness;
+endpoint in §6 Q1) — that is where the remaining loss (−38pp reader gap) lives.
+
+**The decisive experiment (as designed; kept for the record):**
 `benchmarks/sem_chunking_sim.py` — semantic-channel-only ranking of each question's
 own haystack under four indexing strategies (`head` = today, `win` = 254-token
 windows max-pooled, `role` = {pair, user turn, assistant turn} max-pooled,
