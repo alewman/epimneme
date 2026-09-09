@@ -20,3 +20,5 @@ timestamp	bench	tag	version	git_hash	chunk_size	chunk_overlap	ef_search	model	re
 20260512_1342	beir	v402-scifact	0.7.0	6e32bec	1000	300	200	sentence-transformers/all-MiniLM-L6-v2	results_engram_beir_v402-scifact_20260512_1342.json
 20260904_2007	lme	v700-baseline	0.7.0	df2ef32	800	100	100	all-MiniLM-L6-v2	results_engram_lme_v700-baseline_20260904.jsonl
 20260905_2331	lme-m-hier	phase5-experiment	0.7.0	2949966	800	100	100	all-MiniLM-L6-v2	results_lme_m_hierarchical_experiment_20260905.jsonl
+20260909_1046	lme-e2e	v700-clipped-ctx4096	0.7.0	5af4bbe	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-clipped-ctx4096_20260907.rescored.jsonl
+20260909_1046	lme-e2e	v700-fulltext-ctx16384	0.7.0	5af4bbe	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-fulltext-ctx16384_20260908.rescored.jsonl

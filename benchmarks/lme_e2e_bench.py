@@ -326,6 +326,70 @@ async def generate_hyde_chunks(
 # MAIN PIPELINE
 # =============================================================================
 
+_CORPUS_ID_RE = re.compile(r"^(?P<session>.+?)_turn_(?P<turn>\d+)$")
+
+
+def build_context(
+    ranked: list[dict],
+    question: str,
+    qtype: str,
+    question_date: str,
+    top_k: int,
+    use_assembly: bool,
+    budget_chars: int | None = None,
+) -> tuple[str, int, dict]:
+    """Turn ranked retrieval items into the reader's context block.
+
+    Raw path (``use_assembly=False``): the historical ``"\\n---\\n".join`` of the
+    top-K texts. Assembly path: the same candidate pool handed to
+    ``epimneme.assembly.assemble_context`` — adaptive K, supersession pruning,
+    char budget, session grouping, chronological order, precomputed date
+    deltas. The pool is deliberately identical in both paths so the comparison
+    isolates *presentation* from retrieval depth.
+
+    Returns (context, excerpts_used, stats).
+    """
+    # Per-type top_k: multi-session counting benefits from wider context
+    effective_top_k = top_k * 2 if qtype == "multi-session" else top_k
+    pool = ranked[:effective_top_k]
+    if not pool:
+        return "(no memory found)", 0, {}
+    if not use_assembly:
+        return "\n---\n".join(item["text"] for item in pool), len(pool), {}
+
+    from epimneme.assembly import DEFAULT_BUDGET_CHARS, Excerpt, assemble_context
+    from epimneme.fusion import extract_logical_date
+
+    excerpts = []
+    for idx, item in enumerate(pool):
+        cid = str(item.get("corpus_id", ""))
+        m = _CORPUS_ID_RE.match(cid)
+        md: dict = {"memory_id": cid}
+        if m:
+            md["session_id"] = m.group("session")
+            md["turn_index"] = int(m.group("turn"))
+        else:
+            md["turn_index"] = idx
+        excerpts.append(Excerpt(text=item["text"], score=float(item.get("score", 0.0)), metadata=md))
+
+    # LME question_date is "YYYY/MM/DD (Dow) HH:MM"; reuse the fusion parser
+    # (it understands the slash format) by feeding it as a fake header.
+    ref = extract_logical_date(f"[Date: {question_date}]") if question_date else None
+    assembled = assemble_context(
+        excerpts, question,
+        reference_date=ref,
+        budget_chars=budget_chars or DEFAULT_BUDGET_CHARS,
+        enable_parent_expansion=False,  # no neighbour fetcher offline
+    )
+    stats = {
+        "assembly_excerpts": assembled.excerpt_count,
+        "assembly_chars": assembled.char_count,
+        "assembly_truncated": assembled.truncated,
+        "pool_chars": sum(len(item["text"]) for item in pool),
+    }
+    return assembled.text, assembled.excerpt_count, stats
+
+
 def _pick_prompt(qtype: str, use_temporal: bool) -> str:
     """Select answer prompt based on question type."""
     if qtype == "single-session-preference":
@@ -355,6 +419,8 @@ async def run(
     ollama_url: str = OLLAMA_URL,
     model: str = OLLAMA_MODEL,
     engram_url: str = EPIMNEME_URL,
+    use_assembly: bool = True,
+    assembly_budget: int | None = None,
 ) -> None:
     # answer_prompt is now picked per question in the loop (see _pick_prompt)
     # Resume: load already-completed question IDs from output file
@@ -417,13 +483,16 @@ async def run(
             type_exact.setdefault(qtype, 0)
             type_judge.setdefault(qtype, 0)
 
-            # Per-type top_k: multi-session counting benefits from wider context
-            effective_top_k = top_k * 2 if qtype == "multi-session" else top_k
-
             # Get chunks from prior retrieval results
             r = retrieval_map.get(qid, {})
             ranked = r.get("retrieval_results", {}).get("ranked_items", [])
-            chunks = [item["text"] for item in ranked[:effective_top_k]]
+            question_date = q.get("question_date", "unknown")
+            context, chunks_used, assembly_stats = build_context(
+                ranked, question_text, qtype, question_date, top_k,
+                use_assembly=use_assembly and not use_hyde,
+                budget_chars=assembly_budget,
+            )
+            chunks = [item["text"] for item in ranked[: (top_k * 2 if qtype == "multi-session" else top_k)]]
 
             # HyDE: generate hypothetical, search Engram, prepend results
             hyde_chunks: list[str] = []
@@ -440,8 +509,10 @@ async def run(
                     # Trim to 2*top_k max total
                     chunks = chunks[: top_k * 2]
 
-            context = "\n---\n".join(chunks) if chunks else "(no memory found)"
-            question_date = q.get("question_date", "unknown")
+            if use_hyde:
+                # HyDE path keeps the historical raw join (chunks were prepended above)
+                context = "\n---\n".join(chunks) if chunks else "(no memory found)"
+                chunks_used = len(chunks)
             prompt = _pick_prompt(qtype, use_temporal).format(
                 context=context, question=question_text, question_date=question_date
             )
@@ -482,7 +553,9 @@ async def run(
                 "question": question_text,
                 "gold": str(gold),
                 "generated": generated,
-                "chunks_used": len(chunks),
+                "chunks_used": chunks_used,
+                "assembly": bool(use_assembly and not use_hyde),
+                **assembly_stats,
                 "exact_match": exact,
                 "judge_match": judged,
                 "hit": hit,
@@ -523,12 +596,14 @@ async def run(
             type_total[qt] = type_total.get(qt, 0) + 1
             type_exact.setdefault(qt, 0)
             type_judge.setdefault(qt, 0)
-            if row.get("exact_match"):
-                exact_hits += 1
-                type_exact[qt] = type_exact.get(qt, 0) + 1
-            elif row.get("judge_match"):
+            # `hit` is the authoritative flag (it includes the _abs rule, which
+            # neither exact_match nor judge_match records on its own).
+            if row.get("judge_match"):
                 judge_hits += 1
                 type_judge[qt] = type_judge.get(qt, 0) + 1
+            elif row.get("hit"):
+                exact_hits += 1
+                type_exact[qt] = type_exact.get(qt, 0) + 1
     total_hits = exact_hits + judge_hits
     print("\n" + "=" * 70)
     print(f"FINAL E2E SCORE: {total_hits}/{total} = {total_hits/total:.4f}")
@@ -556,7 +631,7 @@ def main() -> None:
     global OLLAMA_NUM_CTX
     ap = argparse.ArgumentParser(description="End-to-end LME benchmark via Ollama")
     ap.add_argument(
-        "--retrieval-results", required=True,
+        "--retrieval-results", default="",
         help="Path to JSONL file from a prior lme retrieval run (ranked_items required)",
     )
     ap.add_argument(
@@ -598,6 +673,16 @@ def main() -> None:
              "top-k full-length chunks plus the prompt or Ollama silently drops the front",
     )
     ap.add_argument(
+        "--no-assembly", action="store_true",
+        help="Reproduce the historical raw '---'-joined top-K context instead of "
+             "epimneme.assembly.assemble_context (adaptive K, supersession pruning, "
+             "char budget, session grouping, chronological order, date deltas)",
+    )
+    ap.add_argument(
+        "--assembly-budget", type=int, default=0,
+        help="Assembly char budget (0 = epimneme.assembly.DEFAULT_BUDGET_CHARS)",
+    )
+    ap.add_argument(
         "--rescore-only", action="store_true",
         help="Re-score an existing output JSONL (--out) without regenerating answers. "
              "Applies _abs fix and optionally runs --judge on misses. "
@@ -615,6 +700,9 @@ def main() -> None:
             model=args.model,
         )
         return
+
+    if not args.retrieval_results:
+        ap.error("--retrieval-results is required unless --rescore-only")
 
     # Load questions
     lme_path = Path(args.lme_data)
@@ -645,6 +733,9 @@ def main() -> None:
     print(f"  Temporal:    {args.temporal}")
     print(f"  HyDE:        {args.hyde}")
     print(f"  Judge pass:  {args.judge}")
+    print(f"  Assembly:    {not args.no_assembly}"
+          + (f" (budget={args.assembly_budget})" if args.assembly_budget else ""))
+    print(f"  num_ctx:     {OLLAMA_NUM_CTX}")
     print(f"  Output:      {out_path}")
     print()
 
@@ -662,6 +753,8 @@ def main() -> None:
             ollama_url=args.ollama_url,
             model=args.model,
             engram_url=args.engram_url,
+            use_assembly=not args.no_assembly,
+            assembly_budget=args.assembly_budget or None,
         )
     )
 

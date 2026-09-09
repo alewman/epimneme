@@ -565,7 +565,7 @@ Every configuration ties flat at best and regresses R@10 for narrower session cu
 ---
 
 *Benchmark harness: `/data/emu/epimneme/benchmarks/`*
-*Results: `results_engram_lme_rrf_final.jsonl`, `results_engram_locomo_top10_final.json` (April 2026); `results_engram_lme_v700-baseline_20260904.jsonl`, `results_lme_m_hierarchical_experiment_20260905.jsonl` (September 2026, local only — see `.gitignore`)*
+*Results: `results_engram_lme_rrf_final.jsonl`, `results_engram_locomo_top10_final.json` (April 2026); `results_engram_lme_v700-baseline_20260904.jsonl`, `results_lme_m_hierarchical_experiment_20260905.jsonl`, `results_engram_lme_e2e_v700-{clipped-ctx4096,fulltext-ctx16384}_*.rescored.jsonl` (September 2026, local only — see `.gitignore`)*
 *Pre-RRF results: `results_engram_lme_session_full.jsonl`, `results_engram_lme_clean_nodedup.jsonl`, `results_engram_locomo_full.json`, `results_engram_locomo_top10.json`*
 *Run dates: April 7–8, 2026; September 4–5, 2026*
 
@@ -610,3 +610,75 @@ rows, backup/restore + re-embed plumbing, three-benchmark re-validation) for a g
 this small and this far from the target. Revisit only alongside an embedder change.
 The reader-side fix (harness text cap + Ollama `num_ctx`, commit `f3cc453`) stands and
 is the part of "the chunking fix" that pays; its payoff is measured by Phase 3.
+
+### Phase 3 — e2e reader-side fix (2026-09-08/09)
+
+**Question.** The 2026-09-07 diagnosis said the e2e reader gap was presentation, not
+retrieval: the harness clipped stored text at 2,000 chars and never set Ollama's
+`num_ctx`, so the reader saw neither the tail of most turns nor (after Ollama's silent
+front-truncation at the 4,096-token default) the front of the prompt. How much of the
+gap does fixing only that recover?
+
+**Method.** Same v700 retrieval results (LME-S, 500 questions), same reader
+(`qwen3.8:27b` on the LAN Mac, `think=false`, temperature 0), same prompts, same
+top-K (10; 20 for multi-session), same raw `---`-joined presentation. Two runs:
+*control* = clipped retrieval file + `num_ctx=4096` (the pre-fix conditions);
+*fixed* = full-text retrieval file + `num_ctx=16384` (commit `f3cc453`). Both
+scored with `--rescore-only --judge` afterwards (substring + `_abs` rule, then the
+LLM judge on misses; preference questions use the rubric judge). The May v402 e2e
+column is a different reader (`gemma4:31b`, terse) on v402 retrieval, shown for
+continuity only. Paired on all 500 questions (`benchmarks/compare_e2e.py`).
+
+| type | n | v402 (May) | control | fixed | fixed − control |
+|---|---|---|---|---|---|
+| single-session-user | 70 | 0.929 | 0.429 | **0.943** | +51.4pp |
+| single-session-assistant | 56 | 0.446 | 0.768 | **0.982** | +21.4pp |
+| single-session-preference | 30 | 0.100 | 0.233 | **0.500** | +26.7pp |
+| multi-session | 133 | 0.526 | 0.158 | **0.647** | +48.9pp |
+| knowledge-update | 78 | 0.897 | 0.346 | **0.821** | +47.5pp |
+| temporal-reasoning | 133 | 0.489 | 0.316 | **0.549** | +23.3pp |
+| **overall** | 500 | 0.596 | 0.340 | **0.718** | **+37.8pp** |
+
+Judge rescues: control 16 (+18 preserved from the original partial run), fixed 50 —
+the qwen reader is verbose ("Based on the conversation…", rubric-style preference
+answers), so its substring-only score understates it by ~10pp; do not compare
+unjudged qwen files against the unjudged gemma v402 file. Mean reader latency:
+control 47s, fixed 63s per question (full context costs tokens).
+
+**Phase 3 acceptance gates** (plan §Phase 3, measured against the like-for-like
+control; the plan's Phase 0.4 baseline never ran):
+temporal ≥ +15pp ✅ (+23.3); single-session-assistant ≥ +15pp ✅ (+21.4);
+no category regresses ✅; overall ≥ +10pp ✅ (+37.8);
+knowledge-update ≥ 93% ❌ (82.1%). Against the May v402 column, overall is +12.2pp
+and knowledge-update is −7.7pp — but that column is a different reader, and the
+terse gemma reader's exact-match behaviour is not separable from its retrieval.
+
+**Where the remaining loss is.** Of the fixed run's misses, the gold session(s) are
+*all* inside the reader's pool for 13/14 knowledge-update, 42/60 temporal and
+37/47 multi-session misses — reader-side, not retrieval. Knowledge-update misses
+are the reader choosing the stale value (27:12 vs 25:50; 500 vs 600 followers;
+"more water" vs "less"); 33/60 temporal misses are the reader answering `Unknown`
+to a date-arithmetic question. Those are precisely the two presentation problems
+`epimneme.assembly` addresses (chronological order + supersession pruning; precomputed
+date deltas), so the assembly run is the next measurement, not a retrieval change.
+
+**Context-window caveat for the fixed run.** Raw pool sizes on the full-text file
+(chars, top-K as fed): all-types median 25.6k, p90 49k; multi-session median 47.4k,
+p90 56k, max 77k. At ~3.5–4 chars/token, the top ~14 multi-session prompts exceeded
+`num_ctx=16384` and were still silently front-truncated by Ollama. The assembly path
+replaces that with a deterministic char budget.
+
+**Harness state.** `lme_e2e_bench.py` now defaults to `assemble_context` (same
+candidate pool as the raw path; `--no-assembly` reproduces the raw join;
+`--assembly-budget N`), records `assembly_excerpts/chars/truncated` per row, and its
+final summary counts the authoritative `hit` flag (it previously ignored the `_abs`
+rule and under-reported by ~4pp). Operational note: the reader Mac throttles hard on
+battery — a run on a 5 W phone charger went from 25 s to 150–260 s per question and
+answers degraded to `Unknown`; MagSafe fixed it. Check the negotiated adapter wattage
+before an overnight run.
+
+**Next.** `results_engram_lme_e2e_v700-assembly-b48k-ctx16384_20260909.jsonl` —
+assembly on, 48,000-char budget (≈ the raw multi-session median, inside the 16k
+window), otherwise identical to *fixed*. Gate: knowledge-update and temporal must
+move; nothing else may regress > 2pp.
+

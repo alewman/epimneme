@@ -382,3 +382,40 @@ two 4-hour passes produced nothing. Aubrey expects those jobs done ~03:00–04:0
   pass of tonight's length analysis was invalidated by this.
 - The local docker container named `ollama` is an empty shell (no binary, no port).
   The real endpoint is on 10.10.20.167 (see §6 Q1).
+
+### Addendum — 2026-09-09 (Phase 3 measured; assembly run in flight)
+
+**Phase 3, part 1 (reader-side fix) is measured** — full table and miss analysis in
+`benchmarks/BENCHMARK_RESULTS.md` § "Phase 3 — e2e reader-side fix". Like-for-like
+(same v700 retrieval, same `qwen3.8:27b` reader, judged): control (clipped text,
+`num_ctx=4096`) 0.340 → fixed (full text, `num_ctx=16384`) **0.718** overall, +37.8pp;
+every category up; gates pass except knowledge-update (0.821 vs ≥ 0.93). Remaining
+misses are reader-side with the gold sessions already in the pool: stale-vs-current
+confusion (knowledge-update) and date arithmetic the reader refuses (temporal,
+33/60 misses answer `Unknown`) — i.e. the assembly module's targets.
+
+**Phase 3, part 2 (assembly in the harness) is implemented and running.**
+`lme_e2e_bench.py` now defaults to `assemble_context` over the *same* candidate pool
+(`--no-assembly` = old path; `--assembly-budget`). First run:
+`results_engram_lme_e2e_v700-assembly-b48k-ctx16384_20260909.jsonl`, budget 48,000
+chars (the raw multi-session median; the module default of 12,000 keeps only 3–5 of
+10–20 excerpts and would confound the comparison with the full-text result), no
+parent expansion (no neighbour fetcher offline). Started 2026-09-09 11:04 PDT,
+~5–7 h. Then: `--rescore-only --judge` on it, `compare_e2e.py` against *fixed*,
+write the verdict here. If knowledge-update still misses its gate, next knobs are
+`prune_superseded` coverage (SimHash near-dup + entity divergence) and the
+counting-query K, not retrieval.
+
+**Reader endpoint facts (2026-09-09):** the Mac must be on MagSafe (or a 100 W USB-C
+cable) for a run — on battery/5 W it throttles 6–10× and the reader starts answering
+`Unknown`. `gemma4:31b` is gone; always pass `--ollama-url http://10.10.20.167:11434
+--model qwen3.8:27b`. Rescore mode is `--rescore-only --judge --out <file>` (no
+retrieval file needed now). Result files are gitignored; the local set now includes
+`*_v700-clipped-ctx4096_20260907.{,rescored.}jsonl` and
+`*_v700-fulltext-ctx16384_20260908.{,rescored.}jsonl`.
+
+**Unrelated uncommitted work sitting in the tree (from the 2026-09-08 afternoon):**
+`Dockerfile` workers 4→1, `ratelimit.py` rewritten as pure ASGI middleware (SSE
+`http.response.start` crash), advisory lock in `_init_schema`. Not part of Phase 3;
+review and commit separately.
+
