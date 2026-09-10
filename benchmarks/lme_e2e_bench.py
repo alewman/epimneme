@@ -329,6 +329,38 @@ async def generate_hyde_chunks(
 _CORPUS_ID_RE = re.compile(r"^(?P<session>.+?)_turn_(?P<turn>\d+)$")
 
 
+def make_neighbor_fetcher(entry: dict):
+    """Build a parent-document neighbour fetcher for one LME question.
+
+    Rebuilds the exact turn-pair corpus the retrieval run ingested (same
+    `build_corpus` as `longmemeval_bench.py`, so texts and corpus_ids match
+    byte-for-byte) and returns the `..._turn_{n-1}` / `..._turn_{n+1}` siblings
+    of a hit as Excerpts. `epimneme.assembly.expand_parents` decides *whether*
+    to expand (not for counting queries; not when the pool spans > 3 sessions).
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    from longmemeval_bench import build_corpus  # noqa: E402
+    from epimneme.assembly import Excerpt
+
+    docs, ids, _ = build_corpus(entry, granularity="turn-pair")
+    by_id = dict(zip(ids, docs))
+
+    def fetch(ex):
+        m = _CORPUS_ID_RE.match(str(ex.metadata.get("memory_id", "")))
+        if not m:
+            return []
+        sess, turn = m.group("session"), int(m.group("turn"))
+        out = []
+        for t in (turn - 1, turn + 1):
+            cid = f"{sess}_turn_{t}"
+            if t >= 0 and cid in by_id:
+                out.append(Excerpt(text=by_id[cid], score=0.0,
+                                   metadata={"memory_id": cid, "session_id": sess, "turn_index": t}))
+        return out
+
+    return fetch
+
+
 def build_context(
     ranked: list[dict],
     question: str,
@@ -337,6 +369,8 @@ def build_context(
     top_k: int,
     use_assembly: bool,
     budget_chars: int | None = None,
+    k_mode: str = "adaptive",
+    fetch_neighbors=None,
 ) -> tuple[str, int, dict]:
     """Turn ranked retrieval items into the reader's context block.
 
@@ -375,11 +409,19 @@ def build_context(
     # LME question_date is "YYYY/MM/DD (Dow) HH:MM"; reuse the fusion parser
     # (it understands the slash format) by feeding it as a fake header.
     ref = extract_logical_date(f"[Date: {question_date}]") if question_date else None
+    # k_mode="pool": disable adaptive K (k_single/k_default/k_counting all = the
+    # harness pool size) so only the presentation transforms differ from the raw
+    # path. "adaptive": the module's own K selection (may narrow the pool).
+    k_kwargs = {}
+    if k_mode == "pool":
+        k_kwargs = dict(k_single=len(pool), k_default=len(pool), k_counting=len(pool))
     assembled = assemble_context(
         excerpts, question,
         reference_date=ref,
         budget_chars=budget_chars or DEFAULT_BUDGET_CHARS,
-        enable_parent_expansion=False,  # no neighbour fetcher offline
+        fetch_neighbors=fetch_neighbors,
+        enable_parent_expansion=fetch_neighbors is not None,
+        **k_kwargs,
     )
     stats = {
         "assembly_excerpts": assembled.excerpt_count,
@@ -421,6 +463,8 @@ async def run(
     engram_url: str = EPIMNEME_URL,
     use_assembly: bool = True,
     assembly_budget: int | None = None,
+    assembly_k_mode: str = "adaptive",
+    assembly_parents: bool = False,
 ) -> None:
     # answer_prompt is now picked per question in the loop (see _pick_prompt)
     # Resume: load already-completed question IDs from output file
@@ -491,6 +535,8 @@ async def run(
                 ranked, question_text, qtype, question_date, top_k,
                 use_assembly=use_assembly and not use_hyde,
                 budget_chars=assembly_budget,
+                k_mode=assembly_k_mode,
+                fetch_neighbors=make_neighbor_fetcher(q) if (assembly_parents and use_assembly and not use_hyde) else None,
             )
             chunks = [item["text"] for item in ranked[: (top_k * 2 if qtype == "multi-session" else top_k)]]
 
@@ -555,6 +601,8 @@ async def run(
                 "generated": generated,
                 "chunks_used": chunks_used,
                 "assembly": bool(use_assembly and not use_hyde),
+                "assembly_k_mode": assembly_k_mode if (use_assembly and not use_hyde) else None,
+                "assembly_parents": bool(assembly_parents and use_assembly and not use_hyde),
                 **assembly_stats,
                 "exact_match": exact,
                 "judge_match": judged,
@@ -679,6 +727,16 @@ def main() -> None:
              "char budget, session grouping, chronological order, date deltas)",
     )
     ap.add_argument(
+        "--assembly-k", choices=["adaptive", "pool"], default="adaptive",
+        help="adaptive = assembly's own K selection (5/10/20 by query shape; can narrow "
+             "the pool); pool = keep the whole harness pool, apply only presentation transforms",
+    )
+    ap.add_argument(
+        "--assembly-parents", action="store_true",
+        help="Enable parent-document expansion: splice the n-1/n+1 turn-pair siblings "
+             "of each hit (rebuilt from the LME haystack) before budgeting",
+    )
+    ap.add_argument(
         "--assembly-budget", type=int, default=0,
         help="Assembly char budget (0 = epimneme.assembly.DEFAULT_BUDGET_CHARS)",
     )
@@ -734,7 +792,7 @@ def main() -> None:
     print(f"  HyDE:        {args.hyde}")
     print(f"  Judge pass:  {args.judge}")
     print(f"  Assembly:    {not args.no_assembly}"
-          + (f" (budget={args.assembly_budget})" if args.assembly_budget else ""))
+          + (f" (k={args.assembly_k}, parents={args.assembly_parents}, budget={args.assembly_budget or 'default'})" if not args.no_assembly else ""))
     print(f"  num_ctx:     {OLLAMA_NUM_CTX}")
     print(f"  Output:      {out_path}")
     print()
@@ -755,6 +813,8 @@ def main() -> None:
             engram_url=args.engram_url,
             use_assembly=not args.no_assembly,
             assembly_budget=args.assembly_budget or None,
+            assembly_k_mode=args.assembly_k,
+            assembly_parents=args.assembly_parents,
         )
     )
 
