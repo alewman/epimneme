@@ -419,3 +419,25 @@ retrieval file needed now). Result files are gitignored; the local set now inclu
 `http.response.start` crash), advisory lock in `_init_schema`. Not part of Phase 3;
 review and commit separately.
 
+### Addendum — 2026-09-10 (assembly measured; ablations running)
+
+Assembly in the reader loop is **flat overall** (0.718 → 0.718 / 0.714) with
+reproducible per-category moves: temporal +6.0pp, preference +13.3pp,
+multi-session −10 to −12pp, knowledge-update 0. Pool-K/56k run rules out K and
+budget as the cause of the multi-session loss. Full table and reading in
+`benchmarks/BENCHMARK_RESULTS.md` § "Phase 3 — assembly module in the reader loop".
+
+Harness now has `--assembly-k {adaptive,pool}`, `--assembly-parents`,
+`--assembly-skip prune,group,chrono,dates`, `--types`; `assemble_context(skip=...)`
+in `src/epimneme/assembly.py` (39 tests pass; skipping all steps == raw join).
+
+Running (chained, judged automatically): multi-session-only ablations skipping
+`group`, `chrono`, `dates` — result files `results_engram_lme_e2e_v700-ms-ablate-
+{group,chrono,dates}-poolk-b56k_20260910.jsonl`, logs `/tmp/bench_e2e_ablation*.log`.
+Compare each against the pool-K run's 133 multi-session rows with `compare_e2e.py`.
+
+Findings that change the plan: supersession pruning changes 0/500 contexts (removal
+candidate); parent expansion eligible on 28/500 and rescues ≤3 (shelved);
+knowledge-update misses are turn-level retrieval gaps, not stale-value confusion —
+Phase 3's "≥93% knowledge-update" gate is not reachable from presentation.
+

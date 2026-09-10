@@ -682,3 +682,60 @@ assembly on, 48,000-char budget (≈ the raw multi-session median, inside the 16
 window), otherwise identical to *fixed*. Gate: knowledge-update and temporal must
 move; nothing else may regress > 2pp.
 
+### Phase 3 — assembly module in the reader loop (2026-09-09/10)
+
+**Question.** Does `epimneme.assembly.assemble_context` (supersession pruning, char
+budget, session grouping, chronological order, precomputed date deltas) move e2e
+accuracy over the raw `---`-joined context, holding retrieval, reader and pool fixed?
+
+**Method.** Same v700 full-text retrieval, same `qwen3.8:27b` reader, `num_ctx=16384`,
+same candidate pool as the *fixed* run (10; 20 for multi-session), judged. Two
+assembly conditions: the module's own adaptive K with a 48,000-char budget, and
+"pool-K" (adaptive K disabled, `--assembly-k pool`) with a 56,000-char budget — the
+second removes both confounds (adaptive K narrowed 21/133 multi-session pools to 10;
+the 48k budget cut 52/133 multi-session contexts vs 14 at 56k). No parent expansion.
+
+| type | n | fixed (raw) | assembly, adaptive K, 48k | assembly, pool-K, 56k |
+|---|---|---|---|---|
+| single-session-user | 70 | 0.943 | 0.957 (+1.4pp) | 0.971 (+2.9pp) |
+| single-session-assistant | 56 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.500 | **0.633 (+13.3pp)** | **0.633 (+13.3pp)** |
+| multi-session | 133 | 0.647 | **0.549 (−9.8pp)** | **0.526 (−12.0pp)** |
+| knowledge-update | 78 | 0.821 | 0.821 | 0.821 |
+| temporal-reasoning | 133 | 0.549 | **0.609 (+6.0pp)** | **0.609 (+6.0pp)** |
+| **overall** | 500 | 0.718 | 0.718 | 0.714 |
+
+**Reading.** Flat overall, and the per-category moves reproduce across both
+conditions (the two assembly runs agree on 126/133 multi-session outcomes):
+- *Temporal +6.0pp both times* (73→81 hits) — the precomputed date deltas pay. But
+  37/133 temporal answers are still `Unknown` (39 before): the reader gives up on
+  most date arithmetic even with the deltas spelled out.
+- *Preference +13.3pp both times* (15→19 hits) — chronological/grouped presentation
+  helps the rubric-style answer. Small n.
+- *Multi-session −10 to −12pp both times* (86→73→70 hits). Not the budget (14/133
+  truncated at 56k) and not adaptive K (disabled in pool-K): the presentation
+  transforms themselves hurt counting questions. Ablations per step (`--assembly-skip
+  group|chrono|dates`, multi-session only, pool-K, 56k) are running; verdict below when
+  they land.
+- *Knowledge-update flat* (14 misses, the same 14). The module's stated target —
+  "reader picks the stale value" — is mostly not what is happening: in the
+  followers example the newer turn is absent from the top-10 (right sessions, wrong
+  turns); of 13 misses, 6 have the gold string in the pool (reader error) and the
+  rest are turn-level retrieval gaps. Supersession pruning changes **0/500** contexts
+  (SimHash near-dup pass never fires on turn-pairs; no explicit links in the
+  benchmark) — it cannot help here by construction.
+- *Parent expansion* was wired into the harness (`--assembly-parents`, siblings
+  rebuilt from the LME haystack) and measured offline instead of run: the module's
+  gating (no counting queries, ≤3 sessions) leaves 28/500 questions eligible, and the
+  n±1 siblings contain the gold string for 3 of the fixed run's misses. Not worth a
+  reader pass; the flag stays as a documented lever that does not pay on LME-S.
+
+**Decision so far.** Keep date-delta annotation (pays on temporal). Grouping /
+chronological order are net negative on the largest category and are under
+ablation; if a single step explains the multi-session loss, disable it for counting
+queries rather than globally. Supersession pruning is dead weight on this data and a
+removal candidate unless production supersedes-links justify it (17 rows carry one;
+reflection never sets it). Knowledge-update needs turn-level retrieval depth, not
+presentation — next lever is over-fetching the top-ranked sessions' turns, measured
+with `evidence_completeness@k`.
+
