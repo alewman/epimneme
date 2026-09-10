@@ -371,6 +371,7 @@ def build_context(
     budget_chars: int | None = None,
     k_mode: str = "adaptive",
     fetch_neighbors=None,
+    skip: tuple[str, ...] = (),
 ) -> tuple[str, int, dict]:
     """Turn ranked retrieval items into the reader's context block.
 
@@ -421,6 +422,7 @@ def build_context(
         budget_chars=budget_chars or DEFAULT_BUDGET_CHARS,
         fetch_neighbors=fetch_neighbors,
         enable_parent_expansion=fetch_neighbors is not None,
+        skip=skip,
         **k_kwargs,
     )
     stats = {
@@ -465,6 +467,7 @@ async def run(
     assembly_budget: int | None = None,
     assembly_k_mode: str = "adaptive",
     assembly_parents: bool = False,
+    assembly_skip: tuple[str, ...] = (),
 ) -> None:
     # answer_prompt is now picked per question in the loop (see _pick_prompt)
     # Resume: load already-completed question IDs from output file
@@ -537,6 +540,7 @@ async def run(
                 budget_chars=assembly_budget,
                 k_mode=assembly_k_mode,
                 fetch_neighbors=make_neighbor_fetcher(q) if (assembly_parents and use_assembly and not use_hyde) else None,
+                skip=assembly_skip,
             )
             chunks = [item["text"] for item in ranked[: (top_k * 2 if qtype == "multi-session" else top_k)]]
 
@@ -603,6 +607,7 @@ async def run(
                 "assembly": bool(use_assembly and not use_hyde),
                 "assembly_k_mode": assembly_k_mode if (use_assembly and not use_hyde) else None,
                 "assembly_parents": bool(assembly_parents and use_assembly and not use_hyde),
+                "assembly_skip": list(assembly_skip),
                 **assembly_stats,
                 "exact_match": exact,
                 "judge_match": judged,
@@ -737,6 +742,14 @@ def main() -> None:
              "of each hit (rebuilt from the LME haystack) before budgeting",
     )
     ap.add_argument(
+        "--assembly-skip", default="",
+        help="Comma-separated assembly steps to leave out (ablation): prune,group,chrono,dates",
+    )
+    ap.add_argument(
+        "--types", default="",
+        help="Comma-separated question types to run (default: all), e.g. multi-session",
+    )
+    ap.add_argument(
         "--assembly-budget", type=int, default=0,
         help="Assembly char budget (0 = epimneme.assembly.DEFAULT_BUDGET_CHARS)",
     )
@@ -769,6 +782,9 @@ def main() -> None:
         lme_path = Path(__file__).parent / "data" / "longmemeval_s_cleaned.json"
     with open(lme_path) as f:
         questions = json.load(f)
+    if args.types:
+        wanted = {t.strip() for t in args.types.split(",") if t.strip()}
+        questions = [q for q in questions if q.get("question_type") in wanted]
     if args.limit > 0:
         questions = questions[: args.limit]
 
@@ -792,7 +808,8 @@ def main() -> None:
     print(f"  HyDE:        {args.hyde}")
     print(f"  Judge pass:  {args.judge}")
     print(f"  Assembly:    {not args.no_assembly}"
-          + (f" (k={args.assembly_k}, parents={args.assembly_parents}, budget={args.assembly_budget or 'default'})" if not args.no_assembly else ""))
+          + (f" (k={args.assembly_k}, parents={args.assembly_parents}, budget={args.assembly_budget or 'default'}, skip={args.assembly_skip or '-'})" if not args.no_assembly else ""))
+    print(f"  Types:       {args.types or 'all'}")
     print(f"  num_ctx:     {OLLAMA_NUM_CTX}")
     print(f"  Output:      {out_path}")
     print()
@@ -815,6 +832,7 @@ def main() -> None:
             assembly_budget=args.assembly_budget or None,
             assembly_k_mode=args.assembly_k,
             assembly_parents=args.assembly_parents,
+            assembly_skip=tuple(t.strip() for t in args.assembly_skip.split(",") if t.strip()),
         )
     )
 

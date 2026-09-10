@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Collection, Sequence
 
 from epimneme.dedup import compute_simhash, entities_diverge, is_near_duplicate
 from epimneme.fusion import extract_logical_date, is_counting_query, parse_target_date
@@ -30,6 +30,9 @@ DEFAULT_BUDGET_CHARS = 12_000
 DEFAULT_K_SINGLE = 5
 DEFAULT_K_DEFAULT = 10
 DEFAULT_K_COUNTING = 20
+
+# Presentation steps that `assemble_context(skip=...)` can leave out.
+ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates"})
 
 _DATE_HEADER_RE = re.compile(r"^\[Date:\s*([^\]]*)\]\n?")
 _SUPERSEDED_TAG_RE = re.compile(r"^\[SUPERSEDED[^\]]*\]\n?")
@@ -402,6 +405,7 @@ def assemble_context(
     k_counting: int = DEFAULT_K_COUNTING,
     fetch_neighbors: Callable[[Excerpt], Sequence[Excerpt]] | None = None,
     enable_parent_expansion: bool = True,
+    skip: Collection[str] = (),
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
@@ -409,9 +413,17 @@ def assemble_context(
     reorders for *presentation*, never for relevance. Parent-document
     expansion (`fetch_neighbors`) is opt-in via a caller-supplied fetcher —
     without one, `enable_parent_expansion` has no effect.
+
+    `skip` names presentation steps to leave out (for ablation): any of
+    ``"prune"`` (supersession pruning), ``"group"`` (session grouping),
+    ``"chrono"`` (chronological order), ``"dates"`` (date-delta annotation).
+    Unknown names raise ``ValueError``.
     """
+    unknown = set(skip) - ASSEMBLY_STEPS
+    if unknown:
+        raise ValueError(f"unknown assembly step(s) to skip: {sorted(unknown)}")
     selected = select_k(excerpts, query, k_single=k_single, k_default=k_default, k_counting=k_counting)
-    pruned = prune_superseded(selected)
+    pruned = prune_superseded(selected) if "prune" not in skip else list(selected)
     budgeted, truncated = budget_by_chars(pruned, budget_chars)
 
     if enable_parent_expansion and fetch_neighbors is not None:
@@ -419,9 +431,12 @@ def assemble_context(
         budgeted, truncated_2 = budget_by_chars(expanded, budget_chars)
         truncated = truncated or truncated_2
 
-    grouped = group_by_session(budgeted)
-    ordered = chronological_order(grouped)
-    annotated, preamble = annotate_temporal(ordered, query, reference_date)
+    grouped = group_by_session(budgeted) if "group" not in skip else list(budgeted)
+    ordered = chronological_order(grouped) if "chrono" not in skip else list(grouped)
+    if "dates" not in skip:
+        annotated, preamble = annotate_temporal(ordered, query, reference_date)
+    else:
+        annotated, preamble = list(ordered), None
 
     parts = [preamble] if preamble else []
     parts.extend(ex.text for ex in annotated)
