@@ -34,6 +34,14 @@ DEFAULT_K_COUNTING = 20
 # Presentation steps that `assemble_context(skip=...)` can leave out.
 ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates"})
 
+# Steps left out for counting/aggregation queries. Measured on LongMemEval-S
+# multi-session (133 q, qwen3.8:27b reader, judged): with all steps on, counting
+# accuracy fell 0.647 → 0.526 vs the raw ranked join; dropping the date-delta
+# annotation recovered it to 0.639 and dropping session grouping to 0.609, while
+# chronological order made no difference (0.519). Both steps pay on
+# temporal-reasoning (+6.0pp), so they are disabled only where they hurt.
+COUNTING_QUERY_SKIP = frozenset({"group", "dates"})
+
 _DATE_HEADER_RE = re.compile(r"^\[Date:\s*([^\]]*)\]\n?")
 _SUPERSEDED_TAG_RE = re.compile(r"^\[SUPERSEDED[^\]]*\]\n?")
 
@@ -406,6 +414,7 @@ def assemble_context(
     fetch_neighbors: Callable[[Excerpt], Sequence[Excerpt]] | None = None,
     enable_parent_expansion: bool = True,
     skip: Collection[str] = (),
+    counting_query_skip: Collection[str] = COUNTING_QUERY_SKIP,
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
@@ -417,9 +426,15 @@ def assemble_context(
     `skip` names presentation steps to leave out (for ablation): any of
     ``"prune"`` (supersession pruning), ``"group"`` (session grouping),
     ``"chrono"`` (chronological order), ``"dates"`` (date-delta annotation).
-    Unknown names raise ``ValueError``.
+    Unknown names raise ``ValueError``. For counting/aggregation queries
+    (`is_counting_query`) the steps in `counting_query_skip` are also left out —
+    see `COUNTING_QUERY_SKIP` for the measurement behind the default; pass
+    ``counting_query_skip=()`` to disable.
     """
-    unknown = set(skip) - ASSEMBLY_STEPS
+    skip = set(skip)
+    if is_counting_query(query):
+        skip |= set(counting_query_skip)
+    unknown = skip - ASSEMBLY_STEPS
     if unknown:
         raise ValueError(f"unknown assembly step(s) to skip: {sorted(unknown)}")
     selected = select_k(excerpts, query, k_single=k_single, k_default=k_default, k_counting=k_counting)

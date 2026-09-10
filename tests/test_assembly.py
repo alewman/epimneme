@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 from epimneme.assembly import (
+    ASSEMBLY_STEPS,
     Excerpt,
     excerpt_date,
     annotate_temporal,
@@ -306,3 +307,43 @@ class TestAssembleContext:
         assert result.excerpt_count == 0
         assert result.text == ""
         assert not result.truncated
+
+
+class TestSkipSteps:
+    def _two_sessions(self):
+        return [
+            Excerpt(text="[Date: 2023/05/20 (Sat) 10:00]\n[USER]: I bought a bike", score=0.9,
+                    metadata={"memory_id": "s1_turn_0", "session_id": "s1", "turn_index": 0}),
+            Excerpt(text="[Date: 2023/05/25 (Thu) 10:00]\n[USER]: I bought a helmet", score=0.8,
+                    metadata={"memory_id": "s2_turn_0", "session_id": "s2", "turn_index": 0}),
+            Excerpt(text="[Date: 2023/05/20 (Sat) 10:05]\n[USER]: and a lock", score=0.7,
+                    metadata={"memory_id": "s1_turn_1", "session_id": "s1", "turn_index": 1}),
+        ]
+
+    def test_unknown_step_raises(self):
+        import pytest
+        with pytest.raises(ValueError):
+            assemble_context(self._two_sessions(), "what did I buy?", skip={"bogus"})
+
+    def test_skip_all_is_raw_join(self):
+        ex = self._two_sessions()
+        result = assemble_context(ex, "what did I buy?", skip=ASSEMBLY_STEPS, counting_query_skip=())
+        assert result.text == "\n---\n".join(e.text for e in ex)
+        assert result.excerpt_count == 3
+
+    def test_counting_query_drops_group_and_dates_by_default(self):
+        ex = self._two_sessions()
+        counting = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30))
+        assert counting.excerpt_count == 3            # not grouped
+        assert "before the question" not in counting.text
+        plain = assemble_context(ex, "what did I buy?", reference_date=date(2023, 5, 30))
+        assert plain.excerpt_count == 2               # s1 merged
+        assert "before the question" in plain.text
+
+    def test_counting_skip_can_be_disabled(self):
+        ex = self._two_sessions()
+        result = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30),
+                                  counting_query_skip=())
+        assert result.excerpt_count == 2
+        assert "before the question" in result.text
+

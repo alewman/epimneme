@@ -22,3 +22,6 @@ timestamp	bench	tag	version	git_hash	chunk_size	chunk_overlap	ef_search	model	re
 20260905_2331	lme-m-hier	phase5-experiment	0.7.0	2949966	800	100	100	all-MiniLM-L6-v2	results_lme_m_hierarchical_experiment_20260905.jsonl
 20260909_1046	lme-e2e	v700-clipped-ctx4096	0.7.0	5af4bbe	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-clipped-ctx4096_20260907.rescored.jsonl
 20260909_1046	lme-e2e	v700-fulltext-ctx16384	0.7.0	5af4bbe	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-fulltext-ctx16384_20260908.rescored.jsonl
+20260910_0350	lme-e2e	v700-assembly-adaptK-b48k	0.7.0	0a14373	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-assembly-b48k-ctx16384_20260909.rescored.jsonl
+20260910_0350	lme-e2e	v700-assembly-poolK-b56k	0.7.0	b01273e	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-assembly-poolk-b56k-ctx16384_20260909.rescored.jsonl
+20260910_1502	lme-e2e-ms	v700-ms-ablate-{group,chrono,dates}	0.7.0	9d7517c	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-ms-ablate-*-poolk-b56k_20260910.rescored.jsonl

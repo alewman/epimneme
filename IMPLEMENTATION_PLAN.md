@@ -441,3 +441,11 @@ candidate); parent expansion eligible on 28/500 and rescues ≤3 (shelved);
 knowledge-update misses are turn-level retrieval gaps, not stale-value confusion —
 Phase 3's "≥93% knowledge-update" gate is not reachable from presentation.
 
+**2026-09-10 15:10 — ablation done.** Date-delta annotation (−11.3pp) and session
+grouping (−3.8pp) cause the multi-session loss; chronological order is neutral.
+Shipped as `COUNTING_QUERY_SKIP = {"group","dates"}` in `assembly.py` (applied when
+`is_counting_query`), 43 assembly tests pass. Validation run (500 q, pool-K/56k,
+judged) queued — `/tmp/bench_e2e_validate.log`; compare against
+`*-assembly-poolk-b56k-*.rescored.jsonl` and `*-fulltext-ctx16384-*.rescored.jsonl`
+with `compare_e2e.py`. Go if multi-session ≥ 0.63 and no other category regresses > 2pp.
+

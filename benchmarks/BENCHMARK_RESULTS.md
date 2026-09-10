@@ -739,3 +739,34 @@ reflection never sets it). Knowledge-update needs turn-level retrieval depth, no
 presentation — next lever is over-fetching the top-ranked sessions' turns, measured
 with `evidence_completeness@k`.
 
+### Phase 3 — multi-session ablation of the assembly steps (2026-09-10)
+
+Multi-session only (133 q), pool-K, 56,000-char budget, one step removed per run,
+judged; `--assembly-skip` on the harness, `assemble_context(skip=...)` in the module.
+Skipping every step reproduces the raw join byte-for-byte (verified).
+
+| condition | multi-session hit | vs raw |
+|---|---|---|
+| raw `---` join (fixed run) | 0.647 | — |
+| assembly, all steps | 0.526 | −12.0pp |
+| − session grouping | 0.609 | −3.8pp |
+| − chronological order | 0.519 | −12.8pp |
+| − date-delta annotation | **0.639** | −0.8pp |
+
+**Reading.** The date-delta suffix on every `[Date: …]` header (`— 12 days before the
+question`) is the main cost on counting questions: removing it flips 18 misses to
+hits and only 3 the other way. It is not the target-date preamble (present in 4/133
+contexts, 1 of the 18). Session grouping is the second cost; chronological order is
+neutral. Supersession pruning was already known to be a no-op (0/500 contexts
+changed). Both offending steps pay on temporal-reasoning (+6.0pp), so they are
+disabled *only for counting queries* (`is_counting_query`) rather than removed:
+`assembly.COUNTING_QUERY_SKIP = {"group", "dates"}`, overridable per call. Tests
+cover the default and the override.
+
+**Validation run** (queued 2026-09-10 15:10 PDT, ~7 h + judge): full 500 questions,
+pool-K/56k, module defaults with the counting-query skip —
+`results_engram_lme_e2e_v700-assembly-countskip-poolk-b56k-ctx16384_20260910.jsonl`.
+Expected: multi-session back to ≈0.64, temporal and preference gains retained, so
+overall ≈0.73–0.74 vs the raw join's 0.718. That is the go/no-go for shipping
+assembly as the default reader path.
+
