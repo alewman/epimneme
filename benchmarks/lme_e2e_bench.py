@@ -372,6 +372,7 @@ def build_context(
     k_mode: str = "adaptive",
     fetch_neighbors=None,
     skip: tuple[str, ...] = (),
+    recency_note: bool = False,
 ) -> tuple[str, int, dict]:
     """Turn ranked retrieval items into the reader's context block.
 
@@ -423,6 +424,7 @@ def build_context(
         fetch_neighbors=fetch_neighbors,
         enable_parent_expansion=fetch_neighbors is not None,
         skip=skip,
+        recency_note=recency_note,
         **k_kwargs,
     )
     stats = {
@@ -468,6 +470,7 @@ async def run(
     assembly_k_mode: str = "adaptive",
     assembly_parents: bool = False,
     assembly_skip: tuple[str, ...] = (),
+    assembly_recency: bool = False,
 ) -> None:
     # answer_prompt is now picked per question in the loop (see _pick_prompt)
     # Resume: load already-completed question IDs from output file
@@ -541,6 +544,7 @@ async def run(
                 k_mode=assembly_k_mode,
                 fetch_neighbors=make_neighbor_fetcher(q) if (assembly_parents and use_assembly and not use_hyde) else None,
                 skip=assembly_skip,
+                recency_note=assembly_recency,
             )
             chunks = [item["text"] for item in ranked[: (top_k * 2 if qtype == "multi-session" else top_k)]]
 
@@ -608,6 +612,7 @@ async def run(
                 "assembly_k_mode": assembly_k_mode if (use_assembly and not use_hyde) else None,
                 "assembly_parents": bool(assembly_parents and use_assembly and not use_hyde),
                 "assembly_skip": list(assembly_skip),
+                "assembly_recency": bool(assembly_recency),
                 **assembly_stats,
                 "exact_match": exact,
                 "judge_match": judged,
@@ -746,6 +751,10 @@ def main() -> None:
         help="Comma-separated assembly steps to leave out (ablation): prune,group,chrono,dates",
     )
     ap.add_argument(
+        "--assembly-recency", action="store_true",
+        help="Prepend the recency note (latest-dated value is current) to the assembled context",
+    )
+    ap.add_argument(
         "--types", default="",
         help="Comma-separated question types to run (default: all), e.g. multi-session",
     )
@@ -808,7 +817,7 @@ def main() -> None:
     print(f"  HyDE:        {args.hyde}")
     print(f"  Judge pass:  {args.judge}")
     print(f"  Assembly:    {not args.no_assembly}"
-          + (f" (k={args.assembly_k}, parents={args.assembly_parents}, budget={args.assembly_budget or 'default'}, skip={args.assembly_skip or '-'})" if not args.no_assembly else ""))
+          + (f" (k={args.assembly_k}, parents={args.assembly_parents}, budget={args.assembly_budget or 'default'}, skip={args.assembly_skip or '-'}, recency={args.assembly_recency})" if not args.no_assembly else ""))
     print(f"  Types:       {args.types or 'all'}")
     print(f"  num_ctx:     {OLLAMA_NUM_CTX}")
     print(f"  Output:      {out_path}")
@@ -833,6 +842,7 @@ def main() -> None:
             assembly_k_mode=args.assembly_k,
             assembly_parents=args.assembly_parents,
             assembly_skip=tuple(t.strip() for t in args.assembly_skip.split(",") if t.strip()),
+            assembly_recency=args.assembly_recency,
         )
     )
 

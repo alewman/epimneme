@@ -365,3 +365,11 @@ class TestSkipSteps:
         no_anchor = assemble_context(ex, q, reference_date=date(2023, 5, 30), skip={"anchor"})
         assert "before the question" in no_anchor.text and not no_anchor.text.startswith("The question refers to")
 
+    def test_recency_note_opt_in(self):
+        ex = self._two_sessions()
+        assert "latest date" not in assemble_context(ex, "what did I buy?").text
+        noted = assemble_context(ex, "what did I buy?", recency_note=True)
+        assert noted.text.startswith("Note: if the excerpts give different values")
+        single = assemble_context(ex[:1], "what did I buy?", recency_note=True)
+        assert "latest date" not in single.text  # needs two dated excerpts
+

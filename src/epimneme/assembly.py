@@ -46,6 +46,11 @@ ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates", "deltas", "anch
 #            wants. Still available: pass default_skip=().
 DEFAULT_SKIP = frozenset({"chrono"})
 
+RECENCY_NOTE = (
+    "Note: if the excerpts give different values for the same fact, "
+    "the value from the excerpt with the latest date is the current one."
+)
+
 # The per-header "— N days before the question" suffix ("deltas") is date
 # arithmetic precomputed for the reader. Measured per question with the suffix on
 # vs off: temporal-reasoning 81 → 75 hits (10 hurt, 4 helped), multi-session
@@ -450,6 +455,7 @@ def assemble_context(
     skip: Collection[str] = (),
     default_skip: Collection[str] = DEFAULT_SKIP,
     date_delta_gate: Callable[[str, date | None], bool] | None = needs_date_arithmetic,
+    recency_note: bool = False,
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
@@ -466,7 +472,11 @@ def assemble_context(
     Unknown names raise ``ValueError``. `default_skip` (default: `DEFAULT_SKIP`)
     is merged in — pass ``()`` for the full pipeline. `date_delta_gate` decides per
     query whether the per-header day-delta suffix is emitted (default:
-    `needs_date_arithmetic`); ``None`` always emits it.
+    `needs_date_arithmetic`); ``None`` always emits it. `recency_note` prepends
+    one line telling the reader that where excerpts disagree the latest-dated
+    value is current (experimental: the knowledge-update failure mode is the
+    reader answering from the top-ranked, older excerpt when a newer one is
+    present; supersession pruning cannot catch it without explicit links).
     """
     skip = set(skip) | set(default_skip)
     if date_delta_gate is not None and not date_delta_gate(query, reference_date):
@@ -494,6 +504,8 @@ def assemble_context(
         annotated, preamble = list(ordered), None
 
     parts = [preamble] if preamble else []
+    if recency_note and sum(1 for ex in annotated if excerpt_date(ex) is not None) >= 2:
+        parts.insert(0, RECENCY_NOTE)
     parts.extend(ex.text for ex in annotated)
     text = "\n---\n".join(parts)
 
