@@ -455,3 +455,12 @@ dates-only for item-counting queries (`is_item_counting_query`, elapsed-time cue
 regex). Validation 2 queued — `/tmp/bench_e2e_validate2.log`,
 `*-assembly-countskip2-*`. Same go rule.
 
+**2026-09-11 08:30 — validation 2: 0.730 overall (+1.2pp vs raw), temporal 0.609,
+KU 0.821, multi-session 0.594 (−5.3pp; 6 questions, all from the 30 that keep
+deltas and have no temporal content).** Reader is deterministic (byte-identical
+contexts → identical answers), so gaps are exact. Temporal-only ablations running
+(`/tmp/bench_e2e_ablation_tr.log`, `*-tr-ablate-{dates,group,chrono}-*`) to see
+which step carries temporal's +6pp; then pick between the current item-counting
+rule and a "question anchored to now" rule for the deltas, and run one final
+validation. Current src default = val 2 rule.
+

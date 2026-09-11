@@ -800,3 +800,42 @@ for 103/112 multi-session ones. Second validation run queued
 (`…-assembly-countskip2-poolk-b56k-ctx16384_20260911.jsonl`); expected multi-session
 ≈ 0.64, temporal ≈ 0.61, overall ≈ 0.74.
 
+### Phase 3 — validation 2: dates-only skip for item-counting queries (2026-09-11)
+
+Full 500, pool-K/56k, judged. Module default now: `COUNTING_QUERY_SKIP = {"dates"}`
+applied when `is_item_counting_query` (counting shape, no elapsed-time cue).
+
+| type | n | raw join | assembly, all steps | val 1 ({group,dates}, all counting) | **val 2 ({dates}, item-counting)** |
+|---|---|---|---|---|---|
+| single-session-user | 70 | 0.943 | 0.971 | 0.971 | 0.957 |
+| single-session-assistant | 56 | 0.982 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.500 | 0.633 | 0.633 | 0.633 |
+| multi-session | 133 | 0.647 | 0.526 | 0.617 | 0.594 |
+| knowledge-update | 78 | 0.821 | 0.821 | 0.808 | 0.821 |
+| temporal-reasoning | 133 | 0.549 | 0.609 | 0.571 | **0.609** |
+| **overall** | 500 | 0.718 | 0.714 | 0.726 | **0.730** |
+
+**Reading.** Temporal's full +6.0pp is back, knowledge-update is back to raw, overall is
+the best judged number so far (+1.2pp over the raw join, +1.6pp over all-steps
+assembly). Multi-session is still −5.3pp vs raw (bar was ≥ 0.63).
+
+**The reader is deterministic**, so this is exact, not noise: on the 103 item-counting
+multi-session questions val 2's contexts are byte-identical to the dates-only
+ablation's and every generated answer matches (66 hits both; raw 67). The whole
+remaining gap is the other 30 multi-session questions, which keep their deltas: 13
+hits with deltas vs 19 without. Those six flips are questions with no temporal
+content at all ("What percentage discount did I get…", "What is the average GPA…",
+"At which university did I present…") — the per-header `— N days before the
+question` suffix is noise for them. A "question is anchored to now" predicate
+(`ago|since|so far|currently|recently|this/last/past week|month|year|…` or a
+parseable relative date) would keep all 19 on that subset but would also stop
+annotating 80/133 temporal questions ("how many days passed between…", "which
+happened first…"), and the temporal +6pp has not been decomposed — the ablations so
+far were multi-session only. Temporal-only ablations (skip dates / group / chrono,
+133 q each, ~1.5 h each) are running to settle which step carries temporal's gain
+before choosing the final predicate.
+
+**Status.** Val 2's rule is what `src/epimneme/assembly.py` ships now. It clears
+every gate except the multi-session bar (0.594 vs 0.63) and is strictly better than
+the raw join overall.
+
