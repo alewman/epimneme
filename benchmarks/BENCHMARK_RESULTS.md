@@ -770,3 +770,33 @@ Expected: multi-session back to ≈0.64, temporal and preference gains retained,
 overall ≈0.73–0.74 vs the raw join's 0.718. That is the go/no-go for shipping
 assembly as the default reader path.
 
+### Phase 3 — validation of the counting-query skip (2026-09-10/11)
+
+Full 500, pool-K/56k, judged, `COUNTING_QUERY_SKIP = {"group","dates"}` applied to
+every `is_counting_query`:
+
+| type | n | raw join | assembly, all steps | assembly, counting skip {group,dates} |
+|---|---|---|---|---|
+| single-session-user | 70 | 0.943 | 0.971 | 0.971 |
+| single-session-assistant | 56 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.500 | 0.633 | 0.633 |
+| multi-session | 133 | 0.647 | 0.526 | 0.617 |
+| knowledge-update | 78 | 0.821 | 0.821 | 0.808 |
+| temporal-reasoning | 133 | 0.549 | 0.609 | **0.571** |
+| **overall** | 500 | 0.718 | 0.714 | 0.726 |
+
+**Not a clean go.** Multi-session recovered to 0.617 (bar: ≥ 0.63; the dates-only
+ablation had reached 0.639 — skipping grouping as well is *worse* than skipping dates
+alone) and temporal gave back most of its gain. Cause, verified per question: 54 of
+133 temporal questions are counting queries by shape ("how many weeks ago…", "how many
+days passed between…") and 8 of the questions lost were exactly those — the skip
+removed the date deltas from the date-arithmetic questions they exist for.
+
+**Refinement (commit after this):** skip only `dates`, and only for *item*-counting
+queries — counting shape with no elapsed-time cue (`ago|since|passed|elapsed|until|
+before|after|earlier|later`, or `between … and`): `assembly.is_item_counting_query`.
+On LME-S that keeps the deltas for 50/55 temporal counting questions and drops them
+for 103/112 multi-session ones. Second validation run queued
+(`…-assembly-countskip2-poolk-b56k-ctx16384_20260911.jsonl`); expected multi-session
+≈ 0.64, temporal ≈ 0.61, overall ≈ 0.74.
+

@@ -449,3 +449,9 @@ judged) queued — `/tmp/bench_e2e_validate.log`; compare against
 `*-assembly-poolk-b56k-*.rescored.jsonl` and `*-fulltext-ctx16384-*.rescored.jsonl`
 with `compare_e2e.py`. Go if multi-session ≥ 0.63 and no other category regresses > 2pp.
 
+**2026-09-11 00:05 — validation 1 marginal (0.726; multi-session 0.617, temporal
+0.571): the skip also hit "how many weeks ago" temporal questions.** Refined to
+dates-only for item-counting queries (`is_item_counting_query`, elapsed-time cue
+regex). Validation 2 queued — `/tmp/bench_e2e_validate2.log`,
+`*-assembly-countskip2-*`. Same go rule.
+

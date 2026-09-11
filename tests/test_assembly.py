@@ -331,14 +331,21 @@ class TestSkipSteps:
         assert result.text == "\n---\n".join(e.text for e in ex)
         assert result.excerpt_count == 3
 
-    def test_counting_query_drops_group_and_dates_by_default(self):
+    def test_item_counting_query_drops_dates_only(self):
         ex = self._two_sessions()
         counting = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30))
-        assert counting.excerpt_count == 3            # not grouped
+        assert counting.excerpt_count == 2            # still grouped
         assert "before the question" not in counting.text
         plain = assemble_context(ex, "what did I buy?", reference_date=date(2023, 5, 30))
-        assert plain.excerpt_count == 2               # s1 merged
+        assert plain.excerpt_count == 2
         assert "before the question" in plain.text
+
+    def test_elapsed_time_counting_query_keeps_dates(self):
+        ex = self._two_sessions()
+        for q in ("How many days ago did I buy the bike?",
+                  "How many days passed between buying the bike and the helmet?"):
+            result = assemble_context(ex, q, reference_date=date(2023, 5, 30))
+            assert "before the question" in result.text, q
 
     def test_counting_skip_can_be_disabled(self):
         ex = self._two_sessions()

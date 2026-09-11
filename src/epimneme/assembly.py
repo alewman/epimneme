@@ -34,13 +34,26 @@ DEFAULT_K_COUNTING = 20
 # Presentation steps that `assemble_context(skip=...)` can leave out.
 ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates"})
 
-# Steps left out for counting/aggregation queries. Measured on LongMemEval-S
+# Steps left out for *item-counting* queries. Measured on LongMemEval-S
 # multi-session (133 q, qwen3.8:27b reader, judged): with all steps on, counting
-# accuracy fell 0.647 → 0.526 vs the raw ranked join; dropping the date-delta
-# annotation recovered it to 0.639 and dropping session grouping to 0.609, while
-# chronological order made no difference (0.519). Both steps pay on
-# temporal-reasoning (+6.0pp), so they are disabled only where they hurt.
-COUNTING_QUERY_SKIP = frozenset({"group", "dates"})
+# accuracy fell 0.647 → 0.526 vs the raw ranked join; dropping the per-header
+# date-delta annotation alone recovered it to 0.639, dropping session grouping
+# alone to 0.609, dropping both to 0.617 (full-run validation), and chronological
+# order made no difference (0.519). So only the date deltas are dropped, and only
+# when the counting query is about items, not about elapsed time: "how many weeks
+# ago…" / "how many days passed between…" are counting queries by shape but are
+# exactly the date arithmetic the deltas exist to precompute (skipping them there
+# cost temporal-reasoning 0.609 → 0.571).
+COUNTING_QUERY_SKIP = frozenset({"dates"})
+_DATE_ARITHMETIC_CUE_RE = re.compile(
+    r"\b(ago|since|passed|elapsed|until|before|after|earlier|later)\b|\bbetween\b.*\band\b",
+    re.IGNORECASE,
+)
+
+
+def is_item_counting_query(query: str) -> bool:
+    """Counting/aggregation query with no elapsed-time cue (see COUNTING_QUERY_SKIP)."""
+    return is_counting_query(query) and not _DATE_ARITHMETIC_CUE_RE.search(query)
 
 _DATE_HEADER_RE = re.compile(r"^\[Date:\s*([^\]]*)\]\n?")
 _SUPERSEDED_TAG_RE = re.compile(r"^\[SUPERSEDED[^\]]*\]\n?")
@@ -426,13 +439,13 @@ def assemble_context(
     `skip` names presentation steps to leave out (for ablation): any of
     ``"prune"`` (supersession pruning), ``"group"`` (session grouping),
     ``"chrono"`` (chronological order), ``"dates"`` (date-delta annotation).
-    Unknown names raise ``ValueError``. For counting/aggregation queries
-    (`is_counting_query`) the steps in `counting_query_skip` are also left out —
-    see `COUNTING_QUERY_SKIP` for the measurement behind the default; pass
-    ``counting_query_skip=()`` to disable.
+    Unknown names raise ``ValueError``. For item-counting queries
+    (`is_item_counting_query`: counting shape, no elapsed-time cue) the steps in
+    `counting_query_skip` are also left out — see `COUNTING_QUERY_SKIP` for the
+    measurement behind the default; pass ``counting_query_skip=()`` to disable.
     """
     skip = set(skip)
-    if is_counting_query(query):
+    if is_item_counting_query(query):
         skip |= set(counting_query_skip)
     unknown = skip - ASSEMBLY_STEPS
     if unknown:
