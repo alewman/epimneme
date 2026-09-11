@@ -354,3 +354,13 @@ class TestSkipSteps:
         assert result.excerpt_count == 2
         assert "before the question" in result.text
 
+    def test_deltas_and_anchor_split(self):
+        ex = self._two_sessions()
+        q = "What did I buy 10 days ago?"
+        full = assemble_context(ex, q, reference_date=date(2023, 5, 30))
+        assert "before the question" in full.text and full.text.startswith("The question refers to")
+        no_deltas = assemble_context(ex, q, reference_date=date(2023, 5, 30), skip={"deltas"})
+        assert "before the question" not in no_deltas.text and no_deltas.text.startswith("The question refers to")
+        no_anchor = assemble_context(ex, q, reference_date=date(2023, 5, 30), skip={"anchor"})
+        assert "before the question" in no_anchor.text and not no_anchor.text.startswith("The question refers to")
+

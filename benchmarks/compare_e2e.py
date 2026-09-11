@@ -10,6 +10,18 @@ each column against the first one. Also reports mean reader latency.
 import json
 import sys
 from collections import defaultdict
+from math import comb
+
+
+def mcnemar_exact(b: int, c: int) -> float:
+    """Two-sided exact McNemar p-value for discordant counts b (base hit, other
+    miss) and c (base miss, other hit): binomial(b+c, 0.5) on min(b, c)."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    tail = sum(comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
 
 TYPES = [
     "single-session-user", "single-session-assistant", "single-session-preference",
@@ -72,6 +84,16 @@ def main(argv):
             else:
                 cells.append(f"{rate:.3f} ({(rate - base) * 100:+.1f}pp)")
         print(f"{qt:28s} {n:4d} " + " ".join(f"{c:>{max(w, 12)}s}" for c in cells))
+    print()
+    base_lab, base_rows = runs[0]
+    print(f"paired vs {base_lab}: b = {base_lab} hit & other miss, c = the reverse, p = exact McNemar")
+    for lab, rows in runs[1:]:
+        for qt in TYPES + ["overall"]:
+            ids = [q for q in common if qt == "overall" or base_rows[q]["question_type"] == qt]
+            b = sum(1 for q in ids if base_rows[q]["hit"] and not rows[q]["hit"])
+            cc = sum(1 for q in ids if rows[q]["hit"] and not base_rows[q]["hit"])
+            if b + cc:
+                print(f"  {lab:>{w}s} {qt:28s} b={b:3d} c={cc:3d} p={mcnemar_exact(b, cc):.3f}")
     print()
     for lab, per in table:
         tot = sum(v[0] for v in per.values())

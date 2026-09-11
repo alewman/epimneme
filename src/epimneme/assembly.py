@@ -32,7 +32,10 @@ DEFAULT_K_DEFAULT = 10
 DEFAULT_K_COUNTING = 20
 
 # Presentation steps that `assemble_context(skip=...)` can leave out.
-ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates"})
+# "dates" is the whole temporal annotation; it splits into "deltas" (the per-header
+# "— N days before the question" suffix) and "anchor" (the one-line preamble
+# stating the absolute date a relative expression in the query resolves to).
+ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates", "deltas", "anchor"})
 
 # Steps left out for *item-counting* queries. Measured on LongMemEval-S
 # multi-session (133 q, qwen3.8:27b reader, judged): with all steps on, counting
@@ -143,6 +146,9 @@ def annotate_temporal(
     excerpts: Sequence[Excerpt],
     query: str,
     reference_date: date | None = None,
+    *,
+    deltas: bool = True,
+    anchor: bool = True,
 ) -> tuple[list[Excerpt], str | None]:
     """Precompute date arithmetic so the reader never has to do it.
 
@@ -155,12 +161,12 @@ def annotate_temporal(
         reference_date = _reference_date(excerpts)
 
     preamble: str | None = None
-    if reference_date is not None:
+    if anchor and reference_date is not None:
         target_date = parse_target_date(query, reference_date)
         if target_date is not None:
             preamble = f"The question refers to approximately {_slash_date(target_date)}."
 
-    if reference_date is None:
+    if reference_date is None or not deltas:
         return list(excerpts), preamble
 
     annotated = []
@@ -438,7 +444,9 @@ def assemble_context(
 
     `skip` names presentation steps to leave out (for ablation): any of
     ``"prune"`` (supersession pruning), ``"group"`` (session grouping),
-    ``"chrono"`` (chronological order), ``"dates"`` (date-delta annotation).
+    ``"chrono"`` (chronological order), ``"dates"`` (all temporal annotation),
+    or its parts ``"deltas"`` (per-header day-delta suffix) and ``"anchor"``
+    (resolved-target-date preamble).
     Unknown names raise ``ValueError``. For item-counting queries
     (`is_item_counting_query`: counting shape, no elapsed-time cue) the steps in
     `counting_query_skip` are also left out — see `COUNTING_QUERY_SKIP` for the
@@ -462,7 +470,10 @@ def assemble_context(
     grouped = group_by_session(budgeted) if "group" not in skip else list(budgeted)
     ordered = chronological_order(grouped) if "chrono" not in skip else list(grouped)
     if "dates" not in skip:
-        annotated, preamble = annotate_temporal(ordered, query, reference_date)
+        annotated, preamble = annotate_temporal(
+            ordered, query, reference_date,
+            deltas="deltas" not in skip, anchor="anchor" not in skip,
+        )
     else:
         annotated, preamble = list(ordered), None
 

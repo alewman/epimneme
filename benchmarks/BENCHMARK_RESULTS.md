@@ -839,3 +839,22 @@ before choosing the final predicate.
 every gate except the multi-session bar (0.594 vs 0.63) and is strictly better than
 the raw join overall.
 
+**Significance (added 2026-09-11, exact McNemar on paired per-question outcomes,
+`compare_e2e.py`).** The reader is deterministic, so paired differences are exact for
+*these* questions; the test asks whether they would survive resampling the question set.
+
+| comparison vs raw join | b (raw hit, other miss) | c (reverse) | p |
+|---|---|---|---|
+| all-steps assembly, multi-session | 20 | 4 | **0.002** |
+| all-steps assembly, temporal | 9 | 17 | 0.169 |
+| all-steps assembly, preference | 0 | 4 | 0.125 |
+| val 2, multi-session | 15 | 8 | 0.210 |
+| val 2, temporal | 9 | 17 | 0.169 |
+| val 2, overall | 30 | 36 | 0.539 |
+
+Only one finding is statistically solid: the full pipeline's multi-session loss. The
+temporal and preference gains and val 2's overall +1.2pp are consistent across runs
+but not significant at n=133/30/500. Treat val 2 as *current best known*, not
+confirmed; the temporal ablations decide the delta rule, and the final validation
+should be judged on the McNemar rows, not the point estimates.
+
