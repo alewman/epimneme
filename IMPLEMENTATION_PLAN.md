@@ -464,3 +464,11 @@ which step carries temporal's +6pp; then pick between the current item-counting
 rule and a "question anchored to now" rule for the deltas, and run one final
 validation. Current src default = val 2 rule.
 
+**2026-09-11 14:20 — temporal ablation done; final rule shipped in src, validation 3
+running.** Chrono removed from the default pipeline (+5 temporal, −1 multi-session
+without it; p=0.011). Delta suffix gated by `needs_date_arithmetic` (elapsed-time /
+ordering cue or parseable relative date). Log `/tmp/bench_e2e_validate3.log`, file
+`*-assembly-gated-nochrono-*`. Compare with `compare_e2e.py raw=… val3=…`; go rule in
+BENCHMARK_RESULTS.md. If go: update README's assembly sentence and CHANGELOG
+"Changed"; if no-go: `git revert` the src change and keep val 2's rule.
+

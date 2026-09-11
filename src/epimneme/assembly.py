@@ -37,29 +37,44 @@ DEFAULT_K_COUNTING = 20
 # stating the absolute date a relative expression in the query resolves to).
 ASSEMBLY_STEPS = frozenset({"prune", "group", "chrono", "dates", "deltas", "anchor"})
 
-# Steps left out for *item-counting* queries. Measured on LongMemEval-S
-# multi-session (133 q, qwen3.8:27b reader, judged): with all steps on, counting
-# accuracy fell 0.647 → 0.526 vs the raw ranked join; dropping the per-header
-# date-delta annotation alone recovered it to 0.639, dropping session grouping
-# alone to 0.609, dropping both to 0.617 (full-run validation), and chronological
-# order made no difference (0.519). So only the date deltas are dropped, and only
-# when the counting query is about items, not about elapsed time: "how many weeks
-# ago…" / "how many days passed between…" are counting queries by shape but are
-# exactly the date arithmetic the deltas exist to precompute (skipping them there
-# cost temporal-reasoning 0.609 → 0.571).
-COUNTING_QUERY_SKIP = frozenset({"dates"})
+# Default pipeline exclusions (measured, LongMemEval-S, qwen3.8:27b reader, judged,
+# paired per question; see benchmarks/BENCHMARK_RESULTS.md "Phase 3"):
+#   chrono — chronological re-ordering after session grouping never paid: neutral
+#            on multi-session (0.526 → 0.519 without it) and −5 questions on
+#            temporal-reasoning (0.609 → 0.647 without it, McNemar p=0.011 vs raw).
+#            Relevance order (what grouping already preserves) is what the reader
+#            wants. Still available: pass default_skip=().
+DEFAULT_SKIP = frozenset({"chrono"})
+
+# The per-header "— N days before the question" suffix ("deltas") is date
+# arithmetic precomputed for the reader. Measured per question with the suffix on
+# vs off: temporal-reasoning 81 → 75 hits (10 hurt, 4 helped), multi-session
+# 70 → 85 (3 hurt, 18 helped). The questions it helps ask for elapsed time or
+# ordering ("how many days passed between…", "how many weeks ago…", "which
+# happened first…"); on everything else it is noise. So the suffix is emitted only
+# when the query shows a date-arithmetic cue or contains a parseable relative
+# date. Gate it differently with `date_delta_gate=`, or always emit with `None`.
 _DATE_ARITHMETIC_CUE_RE = re.compile(
-    r"\b(ago|since|passed|elapsed|until|before|after|earlier|later)\b|\bbetween\b.*\band\b",
+    r"\b(days?|weeks?|months?|years?|hours?)\b.*\b(passed|between|elapsed|ago|since|until|before|after)\b"
+    r"|\b(ago|since|passed)\b"
+    r"|\bthe order of\b"
+    r"|\bwhich .* (first|last|earlier|later|most recently)\b"
+    r"|\b(first|last|earliest|latest|most recent)\b",
     re.IGNORECASE,
 )
 
 
-def is_item_counting_query(query: str) -> bool:
-    """Counting/aggregation query with no elapsed-time cue (see COUNTING_QUERY_SKIP)."""
-    return is_counting_query(query) and not _DATE_ARITHMETIC_CUE_RE.search(query)
-
 _DATE_HEADER_RE = re.compile(r"^\[Date:\s*([^\]]*)\]\n?")
 _SUPERSEDED_TAG_RE = re.compile(r"^\[SUPERSEDED[^\]]*\]\n?")
+
+
+def needs_date_arithmetic(query: str, reference_date: date | None = None) -> bool:
+    """True when the reader will have to compute elapsed time or order events."""
+    if _DATE_ARITHMETIC_CUE_RE.search(query):
+        return True
+    if reference_date is not None and parse_target_date(query, reference_date) is not None:
+        return True
+    return False
 
 
 @dataclass
@@ -433,7 +448,8 @@ def assemble_context(
     fetch_neighbors: Callable[[Excerpt], Sequence[Excerpt]] | None = None,
     enable_parent_expansion: bool = True,
     skip: Collection[str] = (),
-    counting_query_skip: Collection[str] = COUNTING_QUERY_SKIP,
+    default_skip: Collection[str] = DEFAULT_SKIP,
+    date_delta_gate: Callable[[str, date | None], bool] | None = needs_date_arithmetic,
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
@@ -447,14 +463,14 @@ def assemble_context(
     ``"chrono"`` (chronological order), ``"dates"`` (all temporal annotation),
     or its parts ``"deltas"`` (per-header day-delta suffix) and ``"anchor"``
     (resolved-target-date preamble).
-    Unknown names raise ``ValueError``. For item-counting queries
-    (`is_item_counting_query`: counting shape, no elapsed-time cue) the steps in
-    `counting_query_skip` are also left out — see `COUNTING_QUERY_SKIP` for the
-    measurement behind the default; pass ``counting_query_skip=()`` to disable.
+    Unknown names raise ``ValueError``. `default_skip` (default: `DEFAULT_SKIP`)
+    is merged in — pass ``()`` for the full pipeline. `date_delta_gate` decides per
+    query whether the per-header day-delta suffix is emitted (default:
+    `needs_date_arithmetic`); ``None`` always emits it.
     """
-    skip = set(skip)
-    if is_item_counting_query(query):
-        skip |= set(counting_query_skip)
+    skip = set(skip) | set(default_skip)
+    if date_delta_gate is not None and not date_delta_gate(query, reference_date):
+        skip.add("deltas")
     unknown = skip - ASSEMBLY_STEPS
     if unknown:
         raise ValueError(f"unknown assembly step(s) to skip: {sorted(unknown)}")

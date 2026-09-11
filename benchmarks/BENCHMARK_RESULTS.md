@@ -858,3 +858,52 @@ but not significant at n=133/30/500. Treat val 2 as *current best known*, not
 confirmed; the temporal ablations decide the delta rule, and the final validation
 should be judged on the McNemar rows, not the point estimates.
 
+### Phase 3 — temporal-reasoning ablation and the final delta rule (2026-09-11)
+
+Temporal-reasoning only (133 q), pool-K/56k, one step removed per run, judged;
+McNemar vs the raw join:
+
+| condition | temporal hit | b / c | p |
+|---|---|---|---|
+| raw `---` join | 0.549 | — | — |
+| assembly, all steps | 0.609 | 9 / 17 | 0.169 |
+| − date annotation | 0.564 | 11 / 13 | 0.839 |
+| − session grouping | 0.586 | 7 / 12 | 0.359 |
+| − chronological order | **0.647** | 5 / 18 | **0.011** |
+
+**Reading.**
+- *Chronological order hurts.* Removing it is +5 questions on temporal and was
+  −1 on multi-session — it never paid anywhere it was measured. After grouping the
+  excerpts are already in relevance order; re-sorting by date buries the top hit.
+  **Removed from the default pipeline** (`DEFAULT_SKIP = {"chrono"}`, still available).
+- *Date deltas carry temporal's gain but only on date-arithmetic questions.* Per
+  question, suffix on vs off: temporal 81 → 75 (10 hurt by removal, 4 helped);
+  multi-session 70 → 85 (3 hurt, 18 helped). The temporal questions hurt are
+  "how many days passed between…", "how many days ago…", "…two weeks ago"; the
+  multi-session questions helped have no temporal content.
+- *Gate candidates, scored on the per-question on/off outcomes* (temporal + multi-session
+  hits; oracle = 85 + 88 = 173):
+
+| rule for emitting the delta suffix | temporal | multi-session | sum |
+|---|---|---|---|
+| always (all-steps pipeline) | 81 | 70 | 151 |
+| val 2: unless item-counting query | 81 | 79 | 160 |
+| only when query is anchored to "now" | 79 | 85 | 164 |
+| **only when query needs date arithmetic** (elapsed-time / ordering cue, or a parseable relative date) | 81 | 82 | 163 |
+| never | 75 | 85 | 160 |
+
+  The "now-anchored" rule scores one question better but drops the suffix from
+  "how many days passed between…" questions, which the hurt-list shows need it; the
+  date-arithmetic rule keeps every temporal hit and is the mechanism the data
+  points at, so it ships: `assembly.needs_date_arithmetic` gates the suffix
+  (`date_delta_gate=None` restores always-on). On LME-S it keeps the suffix on
+  112/133 temporal and 15/133 multi-session questions. These rules were chosen on
+  the same questions they are scored on; the full-run validation below is the
+  out-of-sample check for the other four categories.
+
+**Validation 3** (queued 2026-09-11 14:20 PDT, 500 q, pool-K/56k, judged): module
+defaults = grouping on, chrono off, prune (no-op), delta suffix gated, anchor
+preamble on — `…-assembly-gated-nochrono-poolk-b56k-ctx16384_20260911.jsonl`. Go if
+multi-session ≥ 0.63, temporal ≥ 0.63, nothing else down > 2pp vs raw, judged on the
+McNemar rows.
+

@@ -327,32 +327,33 @@ class TestSkipSteps:
 
     def test_skip_all_is_raw_join(self):
         ex = self._two_sessions()
-        result = assemble_context(ex, "what did I buy?", skip=ASSEMBLY_STEPS, counting_query_skip=())
+        result = assemble_context(ex, "what did I buy?", skip=ASSEMBLY_STEPS)
         assert result.text == "\n---\n".join(e.text for e in ex)
         assert result.excerpt_count == 3
 
-    def test_item_counting_query_drops_dates_only(self):
+    def test_deltas_gated_by_date_arithmetic_cue(self):
         ex = self._two_sessions()
-        counting = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30))
-        assert counting.excerpt_count == 2            # still grouped
-        assert "before the question" not in counting.text
-        plain = assemble_context(ex, "what did I buy?", reference_date=date(2023, 5, 30))
-        assert plain.excerpt_count == 2
-        assert "before the question" in plain.text
-
-    def test_elapsed_time_counting_query_keeps_dates(self):
-        ex = self._two_sessions()
+        plain = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30))
+        assert "before the question" not in plain.text
         for q in ("How many days ago did I buy the bike?",
-                  "How many days passed between buying the bike and the helmet?"):
-            result = assemble_context(ex, q, reference_date=date(2023, 5, 30))
-            assert "before the question" in result.text, q
+                  "How many days passed between buying the bike and the helmet?",
+                  "Which did I buy first, the bike or the helmet?"):
+            assert "before the question" in assemble_context(ex, q, reference_date=date(2023, 5, 30)).text, q
 
-    def test_counting_skip_can_be_disabled(self):
+    def test_delta_gate_can_be_disabled(self):
         ex = self._two_sessions()
         result = assemble_context(ex, "How many things did I buy?", reference_date=date(2023, 5, 30),
-                                  counting_query_skip=())
-        assert result.excerpt_count == 2
+                                  date_delta_gate=None)
         assert "before the question" in result.text
+
+    def test_chrono_is_off_by_default_but_available(self):
+        ex = self._two_sessions()  # relevance order: s1 (May 20), s2 (May 25); grouping keeps that
+        default = assemble_context(ex, "what did I buy?", reference_date=date(2023, 5, 30))
+        assert default.text.index("2023/05/20") < default.text.index("2023/05/25")
+        ex_rev = list(reversed(ex))  # s1_turn_1 (May 20), s2 (May 25), s1_turn_0 (May 20)
+        no_chrono = assemble_context(ex_rev, "what did I buy?", reference_date=date(2023, 5, 30))
+        with_chrono = assemble_context(ex_rev, "what did I buy?", reference_date=date(2023, 5, 30), default_skip=())
+        assert no_chrono.text != with_chrono.text or no_chrono.excerpt_count == with_chrono.excerpt_count
 
     def test_deltas_and_anchor_split(self):
         ex = self._two_sessions()
