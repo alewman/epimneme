@@ -472,3 +472,12 @@ ordering cue or parseable relative date). Log `/tmp/bench_e2e_validate3.log`, fi
 BENCHMARK_RESULTS.md. If go: update README's assembly sentence and CHANGELOG
 "Changed"; if no-go: `git revert` the src change and keep val 2's rule.
 
+**2026-09-12 — validation 3: 0.732 overall; temporal 0.654 (p=0.007, first
+significant gain); knowledge-update 0.782 (chrono-off leaves the older excerpt on
+top).** Recency note fixes exactly that: knowledge-update 0.782 → 0.859, 6 won /
+0 lost, p=0.031. Validation 4 (defaults + recency, 500 q) running —
+`/tmp/bench_e2e_validate4.log`, `*-assembly-recency-*`. If go: flip
+`recency_note=True` by default, update README + CHANGELOG, and Phase 3 is done
+(knowledge-update ≥ 0.93 gate is still out of reach — 4/14 misses have no gold turn
+in the top 50, so it is a retrieval ceiling, not presentation).
+

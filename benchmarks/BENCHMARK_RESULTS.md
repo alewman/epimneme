@@ -907,3 +907,54 @@ preamble on — `…-assembly-gated-nochrono-poolk-b56k-ctx16384_20260911.jsonl`
 multi-session ≥ 0.63, temporal ≥ 0.63, nothing else down > 2pp vs raw, judged on the
 McNemar rows.
 
+### Phase 3 — validation 3 and the recency note (2026-09-11/12)
+
+Validation 3 = module defaults: grouping on, chrono off, delta suffix gated by
+`needs_date_arithmetic`, anchor preamble on. Full 500, pool-K/56k, judged.
+
+| type | n | raw join | val 2 | **val 3** |
+|---|---|---|---|---|
+| single-session-user | 70 | 0.943 | 0.957 | 0.943 |
+| single-session-assistant | 56 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.500 | 0.633 | 0.567 |
+| multi-session | 133 | 0.647 | 0.594 | 0.602 |
+| knowledge-update | 78 | 0.821 | 0.821 | **0.782** |
+| temporal-reasoning | 133 | 0.549 | 0.609 | **0.654** |
+| **overall** | 500 | 0.718 | 0.730 | **0.732** |
+
+McNemar vs raw: temporal b=5 c=19 **p=0.007** (the gain is now significant, and it is
+the largest category); knowledge-update b=3 c=0 p=0.250; multi-session b=11 c=5
+p=0.210; overall b=21 c=28 p=0.392.
+
+**Reading.** Dropping chronological order took temporal from +6.0pp to +10.5pp and
+made it the first significant *gain* in this ladder. It also cost knowledge-update
+3 questions, and the mechanism is visible per question: with excerpts left in
+relevance order, the top block is often the *older* statement of a fact, and the
+reader answers from it. In four of the six knowledge-update reader misses the newer
+value sat one block below the one the reader used (e.g. `$350,000` dated 2023/08
+chosen over `$400,000` dated 2023/11). Supersession pruning cannot catch these:
+there are no explicit links and the SimHash near-duplicate pass never fires on
+turn-pair excerpts (0/500 contexts changed).
+
+**Recency note.** One line prepended to the assembled context — *"if the excerpts
+give different values for the same fact, the value from the excerpt with the latest
+date is the current one"* — emitted when ≥2 dated excerpts are present
+(`recency_note=True`, harness `--assembly-recency`). Knowledge-update only, 78 q,
+val 3 defaults otherwise, judged:
+
+| condition | knowledge-update hit |
+|---|---|
+| raw join | 0.821 |
+| val 3 (no note) | 0.782 |
+| **val 3 + recency note** | **0.859** |
+
+6 questions won, 0 lost vs val 3 (McNemar **p=0.031**) — the cleanest single result
+in this ladder. It fixes exactly the stale-value cases (`27:12` → `25:50`,
+`$350,000` → `$400,000`, `1250` → `1300`, `125 stars` → `120 stars`) and one
+unanswerable question where the reader had been inventing a number. That is 25 words
+of prompt doing what the supersession-pruning machinery could not.
+
+**Validation 4** (queued 2026-09-12 15:08 PDT, 500 q, judged): module defaults +
+recency note — `…-assembly-recency-gated-nochrono-poolk-b56k_20260912.jsonl`.
+Go if knowledge-update ≥ 0.82, temporal ≥ 0.63, multi-session ≥ 0.60, overall > 0.732.
+
