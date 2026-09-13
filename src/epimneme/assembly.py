@@ -474,9 +474,12 @@ def assemble_context(
     query whether the per-header day-delta suffix is emitted (default:
     `needs_date_arithmetic`); ``None`` always emits it. `recency_note` prepends
     one line telling the reader that where excerpts disagree the latest-dated
-    value is current (experimental: the knowledge-update failure mode is the
-    reader answering from the top-ranked, older excerpt when a newer one is
-    present; supersession pruning cannot catch it without explicit links).
+    value is current (the knowledge-update failure mode is the reader answering
+    from the top-ranked, older excerpt when a newer one is present; supersession
+    pruning cannot catch it without explicit links). Measured: knowledge-update
+    0.782 → 0.859, but multi-session 0.602 → 0.564 — "prefer the latest value"
+    makes the reader drop earlier items from a count — so it is not emitted for
+    counting queries.
     """
     skip = set(skip) | set(default_skip)
     if date_delta_gate is not None and not date_delta_gate(query, reference_date):
@@ -504,7 +507,11 @@ def assemble_context(
         annotated, preamble = list(ordered), None
 
     parts = [preamble] if preamble else []
-    if recency_note and sum(1 for ex in annotated if excerpt_date(ex) is not None) >= 2:
+    if (
+        recency_note
+        and not is_counting_query(query)
+        and sum(1 for ex in annotated if excerpt_date(ex) is not None) >= 2
+    ):
         parts.insert(0, RECENCY_NOTE)
     parts.extend(ex.text for ex in annotated)
     text = "\n---\n".join(parts)

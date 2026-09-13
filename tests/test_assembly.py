@@ -373,3 +373,8 @@ class TestSkipSteps:
         single = assemble_context(ex[:1], "what did I buy?", recency_note=True)
         assert "latest date" not in single.text  # needs two dated excerpts
 
+    def test_recency_note_skipped_for_counting_queries(self):
+        ex = self._two_sessions()
+        counting = assemble_context(ex, "How many things did I buy?", recency_note=True)
+        assert "latest date" not in counting.text
+

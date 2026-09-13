@@ -53,6 +53,17 @@ def main(argv):
     common = set.intersection(*(set(r.keys()) for _, r in runs))
     print(f"paired on {len(common)} questions present in all {len(runs)} files\n")
 
+    # A results file straight off a no-judge generation run scores substring-only.
+    # Comparing one against a judged file silently understates it by ~10pp and
+    # invents one-directional "regressions" — warn loudly instead.
+    for lab, rows in runs:
+        judged = sum(1 for r in rows.values() if r.get("judge_match"))
+        misses = sum(1 for r in rows.values() if not r.get("hit"))
+        if judged == 0 and misses:
+            print(f"  !! WARNING: '{lab}' has no judge_match rows ({misses} misses) — "
+                  f"it looks UNJUDGED. Run --rescore-only --judge and compare the "
+                  f".rescored.jsonl, or this comparison is meaningless.\n")
+
     def stats(rows):
         per = defaultdict(lambda: [0, 0, 0.0])
         for qid in common:
