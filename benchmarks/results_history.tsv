@@ -30,3 +30,5 @@ timestamp	bench	tag	version	git_hash	chunk_size	chunk_overlap	ef_search	model	re
 20260911_1404	lme-e2e-tr	v700-tr-ablate-{dates,group,chrono}	0.7.0	0002d76	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-tr-ablate-*-poolk-b56k_20260911.rescored.jsonl
 20260911_2234	lme-e2e	v700-assembly-gated-nochrono	0.7.0	5af235d	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-assembly-gated-nochrono-poolk-b56k-ctx16384_20260911.rescored.jsonl
 20260911_2343	lme-e2e-ku	v700-ku-recency	0.7.0	35350e4	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-ku-recency-gated-nochrono-poolk-b56k_20260911.rescored.jsonl
+20260912_2343	lme-e2e	v700-assembly-recency-ungated	0.7.0	35350e4	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-assembly-recency-gated-nochrono-poolk-b56k_20260912.rescored.jsonl
+20260913_0821	lme-e2e	v700-assembly-recency-nocount	0.7.0	477925a	800	100	100	qwen3.8:27b	results_engram_lme_e2e_v700-assembly-recency-gated-nocount-poolk-b56k_20260913.rescored.jsonl

@@ -958,3 +958,66 @@ of prompt doing what the supersession-pruning machinery could not.
 recency note — `…-assembly-recency-gated-nochrono-poolk-b56k_20260912.jsonl`.
 Go if knowledge-update ≥ 0.82, temporal ≥ 0.63, multi-session ≥ 0.60, overall > 0.732.
 
+### Phase 3 — validation 4 and 5: the recency note, and why gating it failed (2026-09-12/13)
+
+All 500, pool-K/56k, judged. Val 3 = module defaults (grouping on, chrono off, delta
+suffix gated). Val 4 adds the recency note everywhere. Val 5 adds it but skips it for
+`is_counting_query`.
+
+| type | n | raw join | val 3 (no note) | val 4 (note always) | val 5 (note, not on counting) |
+|---|---|---|---|---|---|
+| single-session-user | 70 | 0.943 | 0.943 | 0.943 | 0.943 |
+| single-session-assistant | 56 | 0.982 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.500 | 0.567 | 0.567 | 0.567 |
+| multi-session | 133 | 0.647 | 0.602 | **0.564** | 0.602 |
+| knowledge-update | 78 | 0.821 | **0.782** | **0.859** | 0.821 |
+| temporal-reasoning | 133 | 0.549 | **0.654** | 0.632 | 0.632 |
+| **overall** | 500 | 0.718 | **0.732** | 0.728 | **0.732** |
+
+McNemar vs raw — val 5: temporal b=6 c=17 **p=0.035**; multi-session b=10 c=4 p=0.180;
+knowledge-update b=3 c=3 p=1.000; overall b=21 c=28 p=0.392.
+
+**Reading.** The note trades categories against each other and the trade nets to zero.
+- Ungated (val 4) it delivers the knowledge-update gain in full (0.859, the best of any
+  run) and costs multi-session 3.8pp — "prefer the value with the latest date" makes
+  the reader drop earlier items from an aggregate.
+- Gating it off for counting queries (val 5) removes that cost exactly (multi-session
+  back to 0.602, matching val 3) — but also removes the gain, because **38 of the 78
+  knowledge-update questions are counting queries** ("How many bikes do I currently
+  own?", "How many stars do I need…"). `is_counting_query` cannot separate *counting
+  one fact whose value was updated* from *aggregating distinct items over time*, and
+  those are the two cases that want opposite instructions.
+- Overall is 0.732 either way. Val 5 is the better-shaped 0.732: knowledge-update at
+  parity with the raw join instead of −3.8pp, with only multi-session below raw
+  (−4.5pp, not significant). Val 3 buys a stronger temporal result (0.654, p=0.007)
+  at the cost of a knowledge-update regression.
+
+**Decision.** Ship val 5's configuration and leave `recency_note` **off by default**
+pending an explicit call: on the benchmark it is a wash, but the failure it fixes
+(answering with a superseded value) is worse in production than a benchmark point, so
+the mechanism argues for turning it on even though the aggregate does not. Enable with
+`recency_note=True` / `--assembly-recency`.
+
+**Not pursued:** a wording change to the note ("prefer the later value for the same
+fact; do not omit distinct items when counting") would plausibly recover both, but the
+whole prize is ~3 questions (+0.6pp) and each measurement is a 7-hour reader pass.
+Recorded as the next cheap experiment if the reader ever gets faster.
+
+### Phase 3 — final state
+
+Shipped defaults (`src/epimneme/assembly.py`): session grouping **on**, chronological
+re-ordering **off**, supersession pruning on but inert on this data, date-delta suffix
+**gated** on `needs_date_arithmetic`, anchor preamble on, parent expansion off,
+recency note available but off.
+
+Measured against the raw ranked join with everything else held fixed: **0.718 → 0.732
+overall**, temporal-reasoning **0.549 → 0.632–0.654** (p=0.007–0.035, the only
+significant gain), preference 0.500 → 0.567, knowledge-update at parity,
+multi-session −4.5pp (not significant). The reader-side fix that preceded all of this
+(full text + `num_ctx=16384`, commit `f3cc453`) was worth **+37.8pp** on its own and
+remains the dominant result of Phase 3.
+
+Phase 3's knowledge-update gate (≥ 0.93) is **not reachable from presentation**: 4 of
+14 misses have no gold turn anywhere in the top 50 and 6 already have the gold string
+in the top 10. That is a retrieval-depth and reader-accuracy ceiling respectively.
+

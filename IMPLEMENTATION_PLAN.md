@@ -481,3 +481,30 @@ top).** Recency note fixes exactly that: knowledge-update 0.782 → 0.859, 6 won
 (knowledge-update ≥ 0.93 gate is still out of reach — 4/14 misses have no gold turn
 in the top 50, so it is a retrieval ceiling, not presentation).
 
+**2026-09-13 — Phase 3 COMPLETE.** Validation 5 (recency note gated off for counting)
+= 0.732 overall, same as val 3, but better shaped: knowledge-update back to parity
+(0.821) with multi-session held at 0.602. The gate removes the note's cost *and* its
+gain, because 38/78 knowledge-update questions are counting queries —
+`is_counting_query` cannot tell "one fact, updated" from "many items, aggregated".
+Shipped config and the full table are in `benchmarks/BENCHMARK_RESULTS.md`
+§ "Phase 3 — final state". `recency_note` stays **off by default**; flipping it is a
+judgment call (benchmark-neutral, but stale answers are worse in production than a
+benchmark point) and needs your decision.
+
+**Open, in priority order:**
+1. Ablate the *retrieval* channels the way the reader path was ablated. Eight ranking
+   channels, four boosts and the query-shape detectors have never been measured
+   individually; three of three reader-side components tested this week turned out to
+   be dead weight or harmful, so expect the same here. Cheap: retrieval runs need no
+   reader.
+2. Embedder swap. Screen candidates offline with `benchmarks/sem_chunking_sim.py`
+   (semantic channel only, no server, no ingest). Measure with **turn-level**
+   `recall_all@10` (0.094) and `evidence_completeness@10` (0.527) — `recall_any@10`
+   is 0.982 and saturated, it cannot show a win. Re-validate the three tuned reader
+   rules afterwards; they were fit to this embedder's output.
+3. Benchmark reproducibility: result files are gitignored, LME data needs a separate
+   download, and the reader needs a LAN Ollama endpoint. Nobody outside this machine
+   can reproduce our numbers today.
+4. Reflection GC review (2026-08-29 soft-deleted 589 memories across 208 projects,
+   unannounced, on a daily timer) — deferred by the user, still open.
+
