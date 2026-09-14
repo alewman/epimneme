@@ -21,7 +21,7 @@ temporal partition) are NOT replayable from this file — see the honesty note i
 `ablate_channels.py` about what that means for the numbers.
 
 Usage:
-    python benchmarks/capture_channels.py --out benchmarks/channels_v700.jsonl
+    EPIMNEME_TOKEN=... python benchmarks/capture_channels.py --out benchmarks/channels_v700.jsonl
     python benchmarks/capture_channels.py --limit 25          # smoke test
     python benchmarks/capture_channels.py --no-cleanup        # keep projects staged
 """
@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -52,10 +53,18 @@ async def capture_one(
     entry: dict,
     limit: int,
     cleanup: bool,
+    project_name: str,
 ) -> dict | None:
-    """Ingest one haystack, query with debug, return the channel snapshot."""
+    """Ingest one haystack, query with debug, return the channel snapshot.
+
+    One project namespace is reused for every question (emptied between them)
+    rather than a project per question. `AuthContext.can_access_project` does
+    exact string matching with no globbing, so per-question names would force
+    the benchmark key to carry the `*` wildcard — i.e. access to every project
+    on the server. A single fixed namespace lets the key be scoped to exactly
+    that one name.
+    """
     qid = entry["question_id"]
-    project_name = f"_chancap_{qid}"
 
     corpus, corpus_ids, corpus_ts = build_corpus(entry, granularity="turn-pair")
 
@@ -133,6 +142,16 @@ async def capture_one(
     finally:
         if cleanup:
             await cleanup_project(client, project_name)
+            # A reused namespace is only safe if it is actually empty again:
+            # leftovers from question N become distractors in question N+1 and
+            # would silently corrupt every metric downstream.
+            leftover = await client.list_all_memories(project_name)
+            if leftover:
+                raise RuntimeError(
+                    f"{project_name} still holds {len(leftover)} memories after "
+                    f"cleanup following {qid} — aborting rather than contaminating "
+                    f"the next haystack."
+                )
 
 
 async def main() -> int:
@@ -142,7 +161,12 @@ async def main() -> int:
     ap.add_argument("--out", default="benchmarks/channels_v700.jsonl")
     ap.add_argument("--limit", type=int, default=0, help="Only first N questions (0=all)")
     ap.add_argument("--search-limit", type=int, default=50, help="Final list depth to record")
-    ap.add_argument("--no-cleanup", action="store_true", help="Leave _chancap_* projects staged")
+    ap.add_argument("--project", default="_chancap",
+                    help="Single project namespace reused for every question; scope the "
+                         "benchmark API key to exactly this name")
+    ap.add_argument("--token", default="", help="Bearer token (or set EPIMNEME_TOKEN)")
+    ap.add_argument("--no-cleanup", action="store_true",
+                    help="Leave the last haystack staged (disables the empty-namespace guard)")
     args = ap.parse_args()
 
     data = load_data(args.data_file)
@@ -166,7 +190,16 @@ async def main() -> int:
     remaining = [e for e in data if e["question_id"] not in done]
     print(f"Capturing channels for {len(remaining)} questions -> {out_path}")
 
-    client = EngramClient(base_url=args.engram_url)
+    token = args.token or os.environ.get("EPIMNEME_TOKEN", "")
+    if not token:
+        print("ERROR: no API token. Pass --token or set EPIMNEME_TOKEN.\n"
+              "  An agent-role key scoped to just this namespace is enough:\n"
+              f"    python -m epimneme.manage create-key --name bench-chancap \\\n"
+              f"        --role agent --projects {args.project} --expires-in-days 7",
+              file=sys.stderr)
+        return 2
+
+    client = EngramClient(base_url=args.engram_url, token=token)
     fh = open(out_path, "a")
     t_start = time.monotonic()
     failures = 0
@@ -174,7 +207,7 @@ async def main() -> int:
         for i, entry in enumerate(remaining, 1):
             try:
                 row = await capture_one(
-                    client, entry, args.search_limit, not args.no_cleanup
+                    client, entry, args.search_limit, not args.no_cleanup, args.project
                 )
             except Exception as exc:  # keep going; one bad haystack shouldn't kill the pass
                 print(f"  [{i}/{len(remaining)}] {entry['question_id']}: FAILED {exc!r}")
