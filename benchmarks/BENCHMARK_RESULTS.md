@@ -1021,3 +1021,69 @@ Phase 3's knowledge-update gate (≥ 0.93) is **not reachable from presentation*
 14 misses have no gold turn anywhere in the top 50 and 6 already have the gold string
 in the top 10. That is a retrieval-depth and reader-accuracy ceiling respectively.
 
+## September 2026 — Retrieval channel ablation
+
+### Method
+
+`benchmarks/capture_channels.py` records, once per question, every RRF channel's
+full pre-fusion ranked list (translated to corpus_ids via a direct project
+enumeration), the channel weights, the live pipeline's final ranking and the gold
+sets. `benchmarks/ablate_channels.py` re-fuses any subset offline in seconds; its
+RRF is verified identical to `fusion.rrf_fuse` in both score and order. 500
+LME-S questions, capture `channels_v700.jsonl`, 0 unmapped entries.
+
+The replay covers the **fusion stage only**. Proper-noun boost, decay scoring,
+keyword rerank, recency/vague/temporal boosts, MMR, gap-aware tiebreak and
+temporal partition all run afterwards and are not replayable, so absolute numbers
+sit below the live pipeline (replay R@1 0.664 vs live 0.860; R@10 0.972 vs 0.982).
+Use the deltas, confirm with a live run.
+
+### Leave-one-out (session-level, 500 q)
+
+| removed | R@1 | R@5 | R@10 | turn EC@10 | ΔR@5 |
+|---|---|---|---|---|---|
+| *(none — all channels)* | 0.664 | 0.928 | 0.972 | 0.517 | — |
+| − semantic | 0.508 | 0.786 | 0.890 | 0.420 | −0.142 |
+| − bm25 | 0.580 | 0.882 | 0.956 | 0.477 | −0.046 |
+| − entity | 0.632 | 0.908 | 0.970 | 0.495 | −0.020 |
+| − turn_pair | 0.648 | 0.916 | 0.970 | 0.507 | −0.012 |
+| − date_proximity | 0.664 | 0.924 | 0.972 | 0.516 | −0.004 |
+| **− fulltext** | **0.878** | **0.960** | **0.980** | **0.578** | **+0.032** |
+
+**Removing the Postgres full-text channel improves every metric**, and lifts
+fusion-stage R@1 by 21.4pp. Semantic and BM25 carry the result; entity and
+turn_pair contribute modestly; date_proximity is within noise of a no-op.
+
+**Mechanism.** The fulltext channel returns a very short list — median 1 document,
+frequently 0 — because `to_tsquery` demands every term match. RRF scores purely by
+rank, so rank 1 of a 1-item list scores exactly the same as rank 1 of a 150-item
+list: `w/(k+1)`. A single weak lexical hit is therefore promoted to the top of the
+fused ranking with the full keyword weight (0.75, the largest of any channel
+except semantic's 1.0). This is the same reciprocal-rank pathology recorded in the
+2026-09-06 evidence-completeness work, now measured directly rather than inferred.
+
+### Weight sweep (offline, fusion stage)
+
+| `EPIMNEME_RRF_KEYWORD_WEIGHT` | R@1 | R@5 | R@10 | turn EC@10 |
+|---|---|---|---|---|
+| 0.75 *(current default)* | 0.664 | 0.928 | 0.972 | 0.517 |
+| 0.50 | 0.758 | 0.950 | 0.978 | 0.546 |
+| 0.25 | 0.846 | 0.962 | 0.980 | 0.566 |
+| 0.10 | 0.876 | 0.960 | 0.980 | 0.575 |
+| 0.05 | 0.878 | 0.960 | 0.980 | 0.578 |
+| 0.00 *(channel removed)* | 0.878 | 0.960 | 0.980 | 0.578 |
+
+Monotonic, saturating by ~0.1. The channel is not merely useless at the fusion
+stage — at its current weight it is actively harmful.
+
+### Live confirmation — IN FLIGHT
+
+The live pipeline already reaches R@1 0.860 where the fusion stage alone reaches
+0.664, so post-fusion reranking is evidently repairing much of this damage
+already. Whether lowering the weight helps the *live* number is therefore an open
+question that the offline replay cannot answer. Running: a second full capture at
+`EPIMNEME_RRF_KEYWORD_WEIGHT=0.1` (`channels_v700_kw010.jsonl`), compared on the
+`final_ranked` field, which is the live ranking. Baseline preserved as
+`channels_v700_kw075.jsonl`. The server weight is restored to 0.75 when that run
+finishes, pending a decision.
+
