@@ -48,6 +48,15 @@ from longmemeval_bench import (  # noqa: E402
 from metrics import session_id_from_corpus_id  # noqa: E402
 
 
+class FatalCaptureError(RuntimeError):
+    """A condition that invalidates the whole run, not just one question.
+
+    Deliberately distinct from the per-question exceptions the main loop
+    tolerates: a namespace that will not empty, or a capture that records no
+    usable channel data, corrupts everything after it and must stop the run.
+    """
+
+
 async def capture_one(
     client: EngramClient,
     entry: dict,
@@ -147,7 +156,7 @@ async def capture_one(
             # would silently corrupt every metric downstream.
             leftover = await client.list_all_memories(project_name)
             if leftover:
-                raise RuntimeError(
+                raise FatalCaptureError(
                     f"{project_name} still holds {len(leftover)} memories after "
                     f"cleanup following {qid} — aborting rather than contaminating "
                     f"the next haystack."
@@ -200,6 +209,16 @@ async def main() -> int:
         return 2
 
     client = EngramClient(base_url=args.engram_url, token=token)
+
+    # Pre-flight: prove the key can actually enumerate the namespace before
+    # spending hours on a run whose cleanup and id-mapping both depend on it.
+    probe = await client.list_all_memories(args.project)
+    if probe:
+        print(f"ERROR: {args.project} is not empty ({len(probe)} memories). "
+              f"Clear it before capturing.", file=sys.stderr)
+        await client.close()
+        return 2
+
     fh = open(out_path, "a")
     t_start = time.monotonic()
     failures = 0
@@ -209,6 +228,8 @@ async def main() -> int:
                 row = await capture_one(
                     client, entry, args.search_limit, not args.no_cleanup, args.project
                 )
+            except FatalCaptureError:
+                raise
             except Exception as exc:  # keep going; one bad haystack shouldn't kill the pass
                 print(f"  [{i}/{len(remaining)}] {entry['question_id']}: FAILED {exc!r}")
                 failures += 1
@@ -216,6 +237,29 @@ async def main() -> int:
             if row is None:
                 failures += 1
                 continue
+
+            # Fail fast on the first row. A silently-empty enumeration makes
+            # every channel list empty AND makes the cleanup guard vacuous, so
+            # the run looks healthy while producing nothing usable. Ten hours
+            # were lost to exactly this; check it once, immediately.
+            if i == 1 and not done:
+                # An individual empty channel is legitimate — fulltext in
+                # particular returns nothing when the query has no lexical
+                # match. The fatal signals are entries that would not map to a
+                # corpus_id, or every channel coming back empty.
+                empty = [k for k, v in row["channels"].items() if not v]
+                if row["unmapped_channel_entries"] or len(empty) == len(row["channels"]):
+                    raise FatalCaptureError(
+                        f"first capture is unusable: {row['unmapped_channel_entries']} "
+                        f"unmapped entries, empty channels {empty}. An empty "
+                        f"memory_id->corpus_id map means /api/memories/recent "
+                        f"returned nothing for this key — and that is what "
+                        f"clear_project enumerates, so cleanup is a no-op too. "
+                        f"Check the key's project scope."
+                    )
+                if empty:
+                    print(f"  (note: {empty} empty on the first question — "
+                          f"legitimate when the query has no match in that channel)")
             fh.write(json.dumps(row) + "\n")
             fh.flush()
             elapsed = time.monotonic() - t_start

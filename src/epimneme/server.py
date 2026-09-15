@@ -924,6 +924,7 @@ async def api_recent_memories(
     # Resolve project name → id
     project_id = None
     if project:
+        auth.enforce_project_access(project)
         p = await mgr.store.get_project(project)
         if p:
             project_id = p.id
@@ -937,6 +938,15 @@ async def api_recent_memories(
         limit=limit,
         offset=offset,
     )
+
+    # The per-row scope check needs project *names* — `can_access_project`
+    # matches against the key's list of names, and passing a project id made it
+    # false for every row on any non-admin key. That silently returned an empty
+    # listing, which in turn made `clear_project()` (which enumerates through
+    # this endpoint) delete nothing at all.
+    _project_names: dict[str, str] = {}
+    if any(m.project_id for m in memories):
+        _project_names = {pr.id: pr.name for pr in await mgr.store.list_projects()}
 
     return {
         "memories": [
@@ -954,7 +964,7 @@ async def api_recent_memories(
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in memories
-            if auth.can_access_project(m.project_id or "")
+            if auth.can_access_project(_project_names.get(m.project_id) if m.project_id else None)
         ],
         "count": len(memories),
         "limit": limit,
