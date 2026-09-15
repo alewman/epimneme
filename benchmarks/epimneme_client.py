@@ -121,8 +121,14 @@ class EngramClient:
         tags: str | None = None,
         reference_date: str | None = None,
         debug: bool = False,
+        skip: str | None = None,
+        update_access: bool | None = None,
     ) -> dict:
-        """Search memories. Returns {count, total, has_more, results: [...]}."""
+        """Search memories. Returns {count, total, has_more, results: [...]}.
+
+        `skip` (comma-separated post-fusion stage names) and `update_access`
+        are ablation controls — see `benchmarks/ablate_stages.py`.
+        """
         session = await self._ensure_session()
         params: dict = {"query": query, "limit": limit}
         if project:
@@ -135,6 +141,10 @@ class EngramClient:
             params["reference_date"] = reference_date
         if debug:
             params["debug"] = "true"
+        if skip:
+            params["skip"] = skip
+        if update_access is not None:
+            params["update_access"] = "true" if update_access else "false"
 
         async def _do():
             async with session.get(f"{self.base_url}/api/memories/search", params=params) as resp:

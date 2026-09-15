@@ -44,3 +44,4 @@ benchmarks/sweep*
 
 # Channel captures from benchmarks/capture_channels.py (~12 MB each, regenerable)
 benchmarks/channels_*.jsonl
+benchmarks/stages_*.jsonl

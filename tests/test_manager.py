@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
+import asyncio
 import pytest
 
 from epimneme.core.models import (
@@ -284,6 +285,71 @@ class TestMemoryCRUD:
         assert mem.id in debug["channels"]["fulltext"]
         assert "semantic" in debug["channels"]
         assert debug["channels"]["semantic"] == []
+
+    @pytest.mark.asyncio
+    async def test_recall_skip_rejects_unknown_stage(self, mock_manager, mock_store):
+        """A typo in an ablation switch must fail loudly, not silently no-op."""
+        mock_store.search_semantic.return_value = []
+        mock_store.search_fulltext.return_value = []
+
+        with pytest.raises(ValueError, match="unknown recall stage"):
+            await mock_manager.recall("anything", skip=["keyword_rerank", "nonsense"])
+
+    @pytest.mark.asyncio
+    async def test_recall_skip_defaults_to_full_pipeline(self, mock_manager, mock_store):
+        """Omitting skip must leave recall()'s behavior exactly as it was."""
+        mem = _mem("Found item")
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+
+        assert len(await mock_manager.recall("Found")) == 1
+
+    @pytest.mark.asyncio
+    async def test_recall_skip_every_stage_still_returns_results(self, mock_manager, mock_store):
+        """Skipping the whole post-fusion stack degrades ranking, not retrieval."""
+        from epimneme.manager import POSTFUSION_STAGES
+
+        mems = [_mem(f"Item {i}") for i in range(3)]
+        mock_store.search_fulltext.return_value = [
+            MemoryResult(memory=m, score=0.8 - i * 0.1, source="fulltext")
+            for i, m in enumerate(mems)
+        ]
+        mock_store.search_semantic.return_value = []
+
+        results = await mock_manager.recall("Item", skip=sorted(POSTFUSION_STAGES))
+        assert len(results) == 3
+        assert {r.memory.id for r in results} == {m.id for m in mems}
+
+    @pytest.mark.asyncio
+    async def test_recall_update_access_false_suppresses_decay_writes(
+        self, mock_manager, mock_store
+    ):
+        """The ablation harness fires many queries at one corpus; those queries
+        must not mutate the decay state each other is scored under."""
+        mem = _mem("Found item")
+        mock_store.search_fulltext.return_value = [
+            MemoryResult(memory=mem, score=0.8, source="fulltext")
+        ]
+        mock_store.search_semantic.return_value = []
+
+        assert len(await mock_manager.recall("Found", update_access=False)) == 1
+        await asyncio.sleep(0)  # let any fire-and-forget task start
+        mock_store.update_decay_on_access.assert_not_called()
+        mock_store.log_access.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_recall_update_access_true_by_default(self, mock_manager, mock_store):
+        """The suppression must be opt-in — normal recall still records access."""
+        mem = _mem("Found item")
+        mock_store.search_fulltext.return_value = [
+            MemoryResult(memory=mem, score=0.8, source="fulltext")
+        ]
+        mock_store.search_semantic.return_value = []
+
+        assert len(await mock_manager.recall("Found")) == 1
+        await asyncio.sleep(0)
+        mock_store.update_decay_on_access.assert_called()
 
     @pytest.mark.asyncio
     async def test_recall_assembled_empty(self, mock_manager, mock_store):

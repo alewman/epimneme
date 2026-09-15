@@ -67,7 +67,7 @@ from epimneme.bulk_import import (
     import_project_files,
     import_chat_directory,
 )
-from epimneme.manager import MemoryManager
+from epimneme.manager import POSTFUSION_STAGES, MemoryManager
 from epimneme.migrations.runner import MigrationRunner
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -397,10 +397,30 @@ async def api_recall(
     assemble: bool = False,
     debug: bool = False,
     reference_date: Optional[str] = None,
+    skip: Optional[str] = None,
+    update_access: bool = True,
     auth: AuthContext = Depends(get_auth),
 ):
+    """Search memories with multi-signal RRF hybrid fusion.
+
+    `skip` (comma-separated post-fusion stage names) and `update_access=false`
+    are ablation controls used by `benchmarks/ablate_stages.py`. They let one
+    ingested corpus be queried once per configuration; `update_access=false`
+    suppresses the decay/access writes so an earlier query cannot change the
+    state a later one is scored under. Both default to normal behaviour.
+    """
     auth.enforce_project_access(project)
     mgr = get_manager()
+
+    skip_stages = [x.strip() for x in skip.split(",") if x.strip()] if skip else []
+    if skip_stages:
+        unknown = sorted(set(skip_stages) - POSTFUSION_STAGES)
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown recall stage(s) to skip: {unknown}; "
+                       f"valid: {sorted(POSTFUSION_STAGES)}",
+            )
 
     # Parse comma-separated tags
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
@@ -429,7 +449,11 @@ async def api_recall(
     else:
         # Fetch limit+offset so we can slice for offset-based pagination
         fetch_count = limit + offset
-        results = await mgr.recall(query, project_name=project, kind=kind, tags=tag_list, limit=fetch_count, reference_date=reference_date, debug=debug_info)
+        results = await mgr.recall(
+            query, project_name=project, kind=kind, tags=tag_list,
+            limit=fetch_count, reference_date=reference_date, debug=debug_info,
+            skip=skip_stages, update_access=update_access,
+        )
 
     page = results[offset : offset + limit]
     # total is a lower bound — true total requires a separate count query

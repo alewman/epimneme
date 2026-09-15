@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Collection, Optional
 
 from epimneme.activity import EventType, get_activity_bus
 from epimneme.core.config import EngramConfig, default_config
@@ -57,6 +57,30 @@ from epimneme.rerank import keyword_rerank
 from epimneme.stores.postgresql import PostgresStore
 
 logger = logging.getLogger(__name__)
+
+
+POSTFUSION_STAGES = frozenset({
+    "proper_noun",      # 4b  name-match boost
+    "decay",            # 4c  retrievability multiplier
+    "keyword_rerank",   # 4d  lexical rerank
+    "recency",          # 5   session-recency RRF channel + recency boost
+    "vague_entities",   # 5   context-entity boost on vague queries
+    "maxsim",           # 6   late-interaction rerank (off by default)
+    "prf",              # 7   pseudo-relevance feedback (off by default)
+    "preference",       # 8   preference-signal boost
+    "temporal_boost",   # 8   temporal Gaussian boost
+    "turn_pair_boost",  # 8   turn-pair completeness boost
+    "mmr",              # 10  session diversification
+    "tiebreak",         # 11  gap-aware deterministic tiebreak
+    "temporal_filter",  # 12  temporal hard filter (off by default)
+    "temporal_partition",  # 13  structural in-window partition
+})
+"""Post-fusion stages that `recall(skip=...)` can leave out, for ablation.
+
+Everything before fusion (the RRF channels) is ablated offline from a
+`capture_channels.py` snapshot instead; these stages are not replayable from
+a capture, so they are ablated live, one query per config.
+"""
 
 
 class MemoryManager:
@@ -608,6 +632,8 @@ class MemoryManager:
         limit: int = 20,
         reference_date: Optional[str] = None,
         debug: Optional[dict] = None,
+        skip: Collection[str] = (),
+        update_access: bool = True,
     ) -> list[MemoryResult]:
         """Search memories with multi-signal RRF hybrid fusion.
 
@@ -628,12 +654,26 @@ class MemoryManager:
          12. Sort, truncate, fire decay updates.
          13. Temporal partition rerank (structural, day-precision only).
 
+        `skip`: names of post-fusion stages to leave out — any of
+        `POSTFUSION_STAGES`. Unknown names raise ``ValueError``. For ablation
+        only; the default runs the full pipeline.
+
+        `update_access`: when False, the fire-and-forget decay/access writes at
+        the end are suppressed. Ablation harnesses issue several queries against
+        one ingested corpus, and those writes would otherwise let an earlier
+        config change the decay state a later one is scored under.
+
         `debug`: if a dict is passed, it is populated in-place with
         `debug["channels"] = {channel_name: [corpus_id, ...]}` — each
         active signal's PRE-FUSION ranked list, keyed by memory id, in rank
         order. Diagnostic only; does not affect the returned results or any
         existing caller's behavior when omitted.
         """
+        skip = set(skip)
+        unknown = skip - POSTFUSION_STAGES
+        if unknown:
+            raise ValueError(f"unknown recall stage(s) to skip: {sorted(unknown)}")
+
         project_id = None
         if project_name:
             project = await self.store.get_project(project_name)
@@ -729,7 +769,7 @@ class MemoryManager:
         fused = rrf_fuse(*rrf_lists, weights=rrf_weights)
 
         # ── 4b. Proper-noun boost (mild, name-matching) ─────────────────
-        proper_nouns = extract_proper_nouns(query)
+        proper_nouns = extract_proper_nouns(query) if "proper_noun" not in skip else []
         if proper_nouns:
             for mr in fused.values():
                 content_lower = mr.memory.content.lower()
@@ -738,7 +778,7 @@ class MemoryManager:
                     mr.score += hits * 0.004
 
         # ── 4c. Decay scoring ────────────────────────────────────────────
-        for mr in fused.values():
+        for mr in (fused.values() if "decay" not in skip else ()):
             m = mr.memory
             retrievability = calculate_retrievability(
                 m.storage_strength,
@@ -752,7 +792,7 @@ class MemoryManager:
             (mr.memory.id, mr.score, mr.memory.content)
             for mr in fused.values()
         ]
-        if rerank_input:
+        if rerank_input and "keyword_rerank" not in skip:
             reranked = keyword_rerank(query, rerank_input)
             for rr in reranked:
                 if rr.memory_id in fused:
@@ -773,7 +813,7 @@ class MemoryManager:
                     mr.memory.session_ordinal = ordinals[sid]
 
             # Session-recency as additional RRF input (now that ordinals are known)
-            if has_recency_intent(query) and candidates:
+            if has_recency_intent(query) and candidates and "recency" not in skip:
                 recency_list = session_recency_rank(candidates, ordinals)
                 if debug is not None:
                     debug.setdefault("channels", {})["session_recency"] = [
@@ -784,10 +824,10 @@ class MemoryManager:
                     if mid in fused:
                         fused[mid].score += mr.score
 
-            if has_recency_intent(query):
+            if has_recency_intent(query) and "recency" not in skip:
                 apply_recency_boost(fused, ordinals)
 
-            if is_vague_query(query):
+            if is_vague_query(query) and "vague_entities" not in skip:
                 ctx_entities = extract_context_entities(list(fused.values()), ordinals)
                 if ctx_entities:
                     for mr in fused.values():
@@ -797,7 +837,7 @@ class MemoryManager:
                             mr.score += hits * 0.012
 
         # ── 6. MaxSim rerank (token-level late interaction) ──────────────
-        if self.config.maxsim_enabled and self._maxsim is not None:
+        if self.config.maxsim_enabled and self._maxsim is not None and "maxsim" not in skip:
             sorted_for_maxsim = sorted(
                 fused.values(), key=lambda r: r.score, reverse=True
             )
@@ -814,7 +854,7 @@ class MemoryManager:
                 fused[mr.memory.id].score = (n - rank) / n
 
         # ── 7. PRF: second FTS pass with expanded query ──────────────────
-        if self.config.prf_enabled and is_vague_query(query):
+        if self.config.prf_enabled and is_vague_query(query) and "prf" not in skip:
             top_for_prf = sorted(
                 fused.values(), key=lambda r: r.score, reverse=True
             )[: self.config.prf_top_k]
@@ -837,9 +877,12 @@ class MemoryManager:
                             fused[mid] = mr
 
         # ── 8. Remaining soft boosts ─────────────────────────────────────
-        apply_preference_signal_boost(fused, query)
-        apply_temporal_boost(fused, query, reference_date=parsed_ref)
-        apply_turn_pair_boost(fused)
+        if "preference" not in skip:
+            apply_preference_signal_boost(fused, query)
+        if "temporal_boost" not in skip:
+            apply_temporal_boost(fused, query, reference_date=parsed_ref)
+        if "turn_pair_boost" not in skip:
+            apply_turn_pair_boost(fused)
 
         # ── 9. Sort for MMR / tiebreaker / filter stages ─────────────────
         results = sorted(
@@ -851,7 +894,7 @@ class MemoryManager:
         # ── 10. MMR session diversification (single-fact queries only) ──
         # Counting queries need ALL instances visible to count; MMR's
         # session_cap would hide repeated events and cause misses.
-        if self.config.mmr_enabled and not is_counting_query(query):
+        if self.config.mmr_enabled and not is_counting_query(query) and "mmr" not in skip:
             results = mmr_rerank(
                 results,
                 lambda_=self.config.mmr_lambda,
@@ -860,7 +903,7 @@ class MemoryManager:
             )
 
         # ── 11. Gap-aware deterministic tiebreaker ───────────────────────
-        if self.config.tiebreak_enabled and len(results) >= 2:
+        if self.config.tiebreak_enabled and len(results) >= 2 and "tiebreak" not in skip:
             results = gap_aware_tiebreak(
                 results,
                 query,
@@ -872,6 +915,7 @@ class MemoryManager:
         # ── 12. Temporal hard-filter (optional, day-precision only) ──────
         if (
             self.config.temporal_hard_filter_enabled
+            and "temporal_filter" not in skip
             and _target_date is not None
             and self.config.temporal_hard_filter_sigma <= 7.0  # safety: day-precision only
         ):
@@ -895,6 +939,7 @@ class MemoryManager:
         # the (default-off) hard filter above is also enabled.
         if (
             self.config.temporal_partition_enabled
+            and "temporal_partition" not in skip
             and _target_date is not None
             and self.config.temporal_hard_filter_sigma <= 7.0  # safety: day-precision only
         ):
@@ -903,7 +948,7 @@ class MemoryManager:
             )
 
         # Update decay fields for top results (fire-and-forget)
-        for r in results[:5]:
+        for r in (results[:5] if update_access else []):
             m = r.memory
             new_storage, new_retrieval, new_count = update_on_access(
                 m.storage_strength,
