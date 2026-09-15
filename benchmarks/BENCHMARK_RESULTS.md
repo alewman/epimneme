@@ -1174,3 +1174,118 @@ ingest. For a variant, set the server env, restart, capture to a second file,
 and always restore the server afterwards with a shell `trap` — the run is long
 enough that an interrupted session would otherwise leave the server on the
 experimental setting.
+
+## September 2026 — Post-fusion stage ablation (live)
+
+### Method
+
+The channel ablation above could only be replayed to the fusion stage, and that
+is precisely why it misled. `recall(skip=...)` now names 14 post-fusion stages,
+so they can be ablated **live**, with no replay and nothing missing.
+`benchmarks/ablate_stages.py` ingests each haystack once and queries it once per
+configuration — ingest is ~9s against ~0.2s per query, so a 14-stage
+leave-one-out costs one capture run rather than fourteen.
+
+500 LME-S questions, 16 configs, 0 failures, ~1h50m. `update_access=false` on
+every query so one config cannot move the decay state another is scored under,
+and the baseline is re-run last as `baseline_check`: **it matched the first
+baseline on all 500 questions**, so the corpus held still across each sweep.
+
+```
+EPIMNEME_TOKEN=... python benchmarks/ablate_stages.py --out benchmarks/stages_v700.jsonl
+python benchmarks/ablate_stages.py --score benchmarks/stages_v700.jsonl   # offline rescore
+```
+
+### Leave-one-out, session level (500 q)
+
+| removed | R@1 | R@5 | R@10 | turn EC@10 | ΔR@5 | fixes | breaks | p |
+|---|---|---|---|---|---|---|---|---|
+| *(baseline)* | 0.860 | 0.968 | 0.982 | 0.527 | — | — | — | — |
+| **− keyword_rerank** | **0.754** | **0.946** | 0.966 | 0.525 | **−0.022** | 6 | 17 | **0.035** |
+| − mmr | 0.860 | 0.966 | 0.980 | 0.531 | −0.002 | 0 | 1 | 1.000 |
+| − temporal_partition | 0.860 | 0.966 | 0.980 | 0.527 | −0.002 | 0 | 1 | 1.000 |
+| − decay | 0.852 | 0.968 | 0.980 | 0.524 | +0.000 | 0 | 0 | 1.000 |
+| − proper_noun | 0.858 | 0.968 | 0.982 | 0.527 | +0.000 | 0 | 0 | 1.000 |
+| − turn_pair_boost | 0.858 | 0.968 | 0.982 | 0.516 | +0.000 | 0 | 0 | 1.000 |
+| − tiebreak | 0.866 | 0.968 | 0.982 | 0.527 | +0.000 | 0 | 0 | 1.000 |
+| − temporal_boost | 0.860 | 0.968 | 0.982 | 0.526 | +0.000 | 0 | 0 | 1.000 |
+| − maxsim / prf / temporal_filter | 0.860 | 0.968 | 0.982 | 0.527 | +0.000 | 0 | 0 | 1.000 |
+| − preference / recency / vague_entities | 0.860 | 0.968 | 0.982 | 0.527 | +0.000 | 0 | 0 | 1.000 |
+
+**Only `keyword_rerank` pays for itself.** Removing it costs 10.6pp of R@1 and
+2.2pp of R@5, the one stage whose effect clears significance. Everything else is
+within noise of a no-op at the session level.
+
+### Firing is not the same as mattering
+
+A stage can reshuffle constantly and never change an answer. Counting questions
+whose ranking the removal actually moved separates the two:
+
+| stage | top-10 moved | any move | discordant @5 |
+|---|---|---|---|
+| keyword_rerank | 499 | 500 | 23 |
+| decay | 290 | 487 | **0** |
+| mmr | 263 | 275 | 1 |
+| turn_pair_boost | 192 | 282 | 0 |
+| proper_noun | 146 | 199 | 0 |
+| tiebreak | 69 | 70 | 0 |
+| temporal_boost | 28 | 36 | 0 |
+| temporal_partition | 11 | 15 | 1 |
+| maxsim, prf, temporal_filter | 0 | 0 | 0 |
+| preference, recency, vague_entities | 0 | 0 | 0 |
+
+`decay` is the striking one: it reorders the top 10 on 290 of 500 questions and
+changes the retrieved answer on **none**. `tiebreak` moves 69 and, if anything,
+costs 0.6pp of R@1 when kept.
+
+Three stages never fire because they are disabled by config (`maxsim`, `prf`,
+`temporal_filter`) — expected, not a finding. Three more never fire because
+their query gate never opens on this benchmark: `recency` (`has_recency_intent`),
+`vague_entities` (`is_vague_query`), and `preference`, which runs on every query
+but never changes an order.
+
+### By question type — where the aggregate hides things
+
+`turn_pair_boost` looks like dead weight above. It is not: it is the only stage
+besides `keyword_rerank` with a consistent effect on **turn-level** evidence
+completeness, the thing the reader actually consumes.
+
+Δ turn EC@10 vs baseline (negative = removal hurts):
+
+| stage | know-upd | multi-sess | ss-asst | ss-pref | ss-user | temporal |
+|---|---|---|---|---|---|---|
+| − keyword_rerank | +0.016 | −0.010 | +0.036 | +0.076 | +0.025 | **−0.054** |
+| − turn_pair_boost | −0.010 | −0.003 | −0.012 | −0.014 | **−0.032** | −0.009 |
+| − decay | −0.002 | −0.003 | −0.007 | −0.010 | +0.002 | −0.003 |
+| − mmr | +0.009 | +0.001 | +0.003 | +0.005 | +0.005 | +0.002 |
+
+`keyword_rerank` is a session-level win and a turn-level **mixed bag**: removing
+it improves turn evidence on four of six types and only clearly hurts temporal
+questions. That is why aggregate turn recall@10 *rises* from 0.094 to 0.118 when
+it is removed while session R@5 falls. It is buying rank-1 session accuracy at
+the cost of turn coverage — a real trade, not a free win, and worth revisiting
+against the reader now that assembly consumes turns.
+
+At session level the same stage splits by type too: removing it costs
+multi-session (−0.030), single-session-user (−0.043) and temporal (−0.038) but
+*helps* single-session-preference (+0.033).
+
+### What this does and does not license
+
+**Does:** `tiebreak`, `proper_noun`, `temporal_boost` and `temporal_partition`
+changed no answer in 500 questions while adding ranking churn and code. They are
+the honest candidates for removal, and unlike the full-text channel this is a
+live measurement, so it will not evaporate.
+
+**Does not:** this benchmark cannot judge `decay`, `recency`, `preference` or
+`vague_entities` at all. LME-S ingests a fresh corpus per question, so there is
+no access history for decay to act on, and its questions carry neither recency
+intent nor vagueness. "Never fires here" means this workload does not exercise
+it — those stages exist for the long-lived agent-memory case that LME-S is not a
+model of. Do not prune them on this evidence.
+
+Two further limits. These are retrieval metrics; a stage could leave recall flat
+and still change what the reader answers, which only an e2e run measures. And
+the harness queries at `limit=50` to match the capture, while production recalls
+at 10–20 — MMR's `session_cap` and `limit` therefore run in a more permissive
+regime here than in production.
