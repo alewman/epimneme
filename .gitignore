@@ -41,3 +41,6 @@ benchmarks/results_*.jsonl
 benchmarks/results_*.tsv
 benchmarks/near_miss_analysis*.txt
 benchmarks/sweep*
+
+# Channel captures from benchmarks/capture_channels.py (~12 MB each, regenerable)
+benchmarks/channels_*.jsonl

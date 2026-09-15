@@ -28,6 +28,7 @@ Usage:
     python benchmarks/ablate_channels.py --capture ... --check      # fidelity report
     python benchmarks/ablate_channels.py --capture ... --by-type
     python benchmarks/ablate_channels.py --capture ... --only semantic,bm25
+    python benchmarks/ablate_channels.py --capture A.jsonl --compare B.jsonl
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ import argparse
 import json
 import sys
 from collections import defaultdict
+from math import comb
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -122,6 +124,72 @@ def run_config(capture: list[dict], drop: set[str], only: set[str] | None) -> li
     return scored
 
 
+def exact_mcnemar(wins: int, losses: int) -> float:
+    """Two-sided exact binomial test on the discordant pairs."""
+    n = wins + losses
+    if n == 0:
+        return 1.0
+    lo = min(wins, losses)
+    return min(1.0, 2 * sum(comb(n, i) for i in range(lo + 1)) / 2**n)
+
+
+def compare_live(base_path: str, other_path: str) -> int:
+    """Paired comparison of two captures on their LIVE final rankings.
+
+    The offline replay above only reaches the fusion stage. When a config change
+    is made at the server and a second capture taken, `final_ranked` holds the
+    real pipeline's answer for both, on the same questions — so the two can be
+    compared directly, with no replay and no missing post-fusion stages.
+    """
+    a = {r["question_id"]: r for r in load(base_path)}
+    b = {r["question_id"]: r for r in load(other_path)}
+    common = sorted(set(a) & set(b))
+    if not common:
+        print("ERROR: the two captures share no question ids", file=sys.stderr)
+        return 2
+
+    print(f"paired live comparison — {len(common)} shared questions")
+    print(f"  A (baseline): {base_path}")
+    print(f"  B (variant):  {other_path}")
+    wa, wb = a[common[0]].get("channel_weights"), b[common[0]].get("channel_weights")
+    if wa != wb:
+        diff = {k: (wa.get(k), wb.get(k)) for k in set(wa or {}) | set(wb or {}) if (wa or {}).get(k) != (wb or {}).get(k)}
+        print(f"  channel weights differ: {diff}")
+    else:
+        print("  !! both captures record the SAME channel weights — is B really a variant?")
+
+    # A capture is only comparable if the two runs saw the same corpus and gold.
+    bad = [q for q in common if set(a[q]["session_correct"]) != set(b[q]["session_correct"])]
+    if bad:
+        print(f"  !! {len(bad)} questions have differing gold sets — not comparable")
+    drift = sum(1 for q in common if a[q]["channels"] != b[q]["channels"])
+    print(f"  pre-fusion channel lists identical on {len(common) - drift}/{len(common)} questions")
+    moved = sum(1 for q in common if a[q]["final_ranked"][:10] != b[q]["final_ranked"][:10])
+    print(f"  live top-10 ordering changed on {moved}/{len(common)} questions"
+          f" — if this is ~0 the knob never reached the pipeline\n")
+
+    sa = {q: score_ranking(a[q]["final_ranked"], a[q]) for q in common}
+    sb = {q: score_ranking(b[q]["final_ranked"], b[q]) for q in common}
+    n = len(common)
+
+    print(f"  {'metric':10s} {'A':>7s} {'B':>7s} {'delta':>8s} {'B fixes':>8s} {'B breaks':>9s} {'p':>7s}")
+    for k in ("s_any@1", "s_any@3", "s_any@5", "s_any@10"):
+        ma = sum(sa[q][k] for q in common) / n
+        mb = sum(sb[q][k] for q in common) / n
+        wins = sum(1 for q in common if sb[q][k] > sa[q][k])
+        losses = sum(1 for q in common if sa[q][k] > sb[q][k])
+        p = exact_mcnemar(wins, losses)
+        print(f"  {k:10s} {ma:7.3f} {mb:7.3f} {mb - ma:+8.3f} {wins:8d} {losses:9d} {p:7.3f}")
+    for k in ("t_all@10", "t_ec@10"):
+        ma = sum(sa[q][k] for q in common) / n
+        mb = sum(sb[q][k] for q in common) / n
+        print(f"  {k:10s} {ma:7.3f} {mb:7.3f} {mb - ma:+8.3f} {'—':>8s} {'—':>9s} {'—':>7s}")
+    print("\n  p is a two-sided exact binomial test over the discordant pairs. Recall@k\n"
+          "  is binary per question so it admits one; the evidence-completeness rows\n"
+          "  are continuous and report means only.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--capture", default="benchmarks/channels_v700.jsonl")
@@ -129,12 +197,20 @@ def main() -> int:
     ap.add_argument("--metric", default="s_any@5", help="Metric column to rank configs by")
     ap.add_argument("--by-type", action="store_true", help="Break the baseline down per question type")
     ap.add_argument("--check", action="store_true", help="Report fidelity vs the live final ranking")
+    ap.add_argument("--compare", default="",
+                    help="Second capture: compare LIVE final rankings pairwise against --capture")
     args = ap.parse_args()
 
     if not Path(args.capture).exists():
         print(f"ERROR: capture not found: {args.capture}\n"
               f"Run: python benchmarks/capture_channels.py --out {args.capture}", file=sys.stderr)
         return 2
+
+    if args.compare:
+        if not Path(args.compare).exists():
+            print(f"ERROR: capture not found: {args.compare}", file=sys.stderr)
+            return 2
+        return compare_live(args.capture, args.compare)
 
     capture = load(args.capture)
     if not capture:

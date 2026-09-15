@@ -1023,6 +1023,11 @@ in the top 10. That is a retrieval-depth and reader-accuracy ceiling respectivel
 
 ## September 2026 — Retrieval channel ablation
 
+> **Read the live-confirmation section before quoting anything here.** The
+> headline fusion-stage result below (removing the full-text channel lifts R@1
+> by 21.4pp) measured **zero** on the live pipeline. Every number in this
+> section up to that point is a fusion-stage replay, not a pipeline result.
+
 ### Method
 
 `benchmarks/capture_channels.py` records, once per question, every RRF channel's
@@ -1076,14 +1081,96 @@ except semantic's 1.0). This is the same reciprocal-rank pathology recorded in t
 Monotonic, saturating by ~0.1. The channel is not merely useless at the fusion
 stage — at its current weight it is actively harmful.
 
-### Live confirmation — IN FLIGHT
+### Live confirmation — the gain does not survive (null result)
 
-The live pipeline already reaches R@1 0.860 where the fusion stage alone reaches
-0.664, so post-fusion reranking is evidently repairing much of this damage
-already. Whether lowering the weight helps the *live* number is therefore an open
-question that the offline replay cannot answer. Running: a second full capture at
-`EPIMNEME_RRF_KEYWORD_WEIGHT=0.1` (`channels_v700_kw010.jsonl`), compared on the
-`final_ranked` field, which is the live ranking. Baseline preserved as
-`channels_v700_kw075.jsonl`. The server weight is restored to 0.75 when that run
-finishes, pending a decision.
+A second full capture was taken with the server running at
+`EPIMNEME_RRF_KEYWORD_WEIGHT=0.1` (`channels_v700_kw010.jsonl`), against the
+preserved 0.75 baseline (`channels_v700_kw075.jsonl`). Both captures record
+`final_ranked`, the real pipeline's ranking with every post-fusion stage
+included, so the two are compared directly — no replay, nothing missing:
 
+```
+python benchmarks/ablate_channels.py \
+    --capture benchmarks/channels_v700_kw075.jsonl \
+    --compare benchmarks/channels_v700_kw010.jsonl
+```
+
+Paired over the same 500 questions, identical gold sets:
+
+| metric | kw 0.75 | kw 0.10 | delta | fixed | broken | p |
+|---|---|---|---|---|---|---|
+| R@1 | 0.860 | 0.854 | −0.006 | 0 | 3 | 0.250 |
+| R@3 | 0.950 | 0.950 | +0.000 | 0 | 0 | 1.000 |
+| R@5 | 0.968 | 0.968 | +0.000 | 0 | 0 | 1.000 |
+| R@10 | 0.982 | 0.980 | −0.002 | 0 | 1 | 1.000 |
+| turn EC@10 | 0.528 | 0.532 | +0.004 | — | — | — |
+
+**The 21.4pp fusion-stage gain is worth nothing live.** Four discordant
+questions in 500, all four in the wrong direction. Post-fusion reranking was
+already repairing the full-text pathology in full.
+
+This is not a plumbing failure — the knob reached the pipeline. Pre-fusion
+channel lists are identical on 493/500 questions (the weight only enters at
+fusion, as expected), while the live top-10 *ordering* changed on 255/500.
+The weight change reshuffles the ranking constantly and changes the answer
+almost never.
+
+**Decision: keep `EPIMNEME_RRF_KEYWORD_WEIGHT=0.75`.** There is no accuracy
+case for moving it. The server was restored to 0.75 after the run.
+
+### What this says about the offline harness
+
+The fusion-stage replay produced a 21.4pp signal that measured zero in
+production. Its own preamble said to treat it as a screen and confirm live —
+that warning is now load-bearing, not boilerplate. **No fusion-stage delta in
+this document should be quoted as a pipeline result**, including the
+leave-one-out table above: `− date_proximity` and `− turn_pair` may be just as
+illusory in the other direction. The replay is a cheap way to rank candidates
+for a live run, and nothing more.
+
+The mechanism behind the null is worth keeping in view: the post-fusion stack
+(proper-noun boost, decay, keyword rerank, recency/vague/temporal boosts, MMR,
+gap-aware tiebreak, temporal partition) is powerful enough to absorb a badly
+corrupted input ordering. That is robustness, but it also means **the fusion
+stage is not where this pipeline's remaining headroom is**.
+
+### The thread this opens: the rerank stack may now be the cost
+
+The `--check` fidelity gap flips sign between the two captures:
+
+| capture | replay R@1 | live R@1 | gap | replay EC@10 | live EC@10 | gap |
+|---|---|---|---|---|---|---|
+| kw 0.75 | 0.664 | 0.860 | **−0.196** | 0.517 | 0.528 | −0.011 |
+| kw 0.10 | 0.876 | 0.854 | **+0.022** | 0.575 | 0.532 | **+0.043** |
+
+At 0.75 the post-fusion stack is a large net repair. At 0.10, fed a clean
+ordering, it *loses* 2.2pp of R@1 and 4.3pp of turn evidence-completeness
+against simply taking the fused order. Much of that stack may exist to undo
+full-text noise, and may now be costing accuracy rather than adding it — but
+the comparison is offline-replay against live, so it is a hypothesis, not a
+finding. Testing it needs a live run with rerank stages disabled, which has no
+switch today.
+
+### Cost note
+
+The full-text channel earns nothing at either weight, yet runs a Postgres
+full-text query on every recall. The latency it costs is small — median query
+time 0.187s at 0.75 vs 0.182s at 0.10 — so removing it is a tidiness and
+complexity argument, not a performance one. There is no config toggle to
+disable a channel outright today; only its weight, and weight 0 is not the same
+as not running the query.
+
+### Reproducing
+
+The three captures are gitignored (~12 MB each; `channels_v700.jsonl` and
+`channels_v700_kw075.jsonl` are the same file). Regenerate with:
+
+```
+python benchmarks/capture_channels.py --out benchmarks/channels_v700.jsonl
+```
+
+Each capture is ~90 minutes for 500 questions, dominated by per-question
+ingest. For a variant, set the server env, restart, capture to a second file,
+and always restore the server afterwards with a shell `trap` — the run is long
+enough that an interrupted session would otherwise leave the server on the
+experimental setting.
