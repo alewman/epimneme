@@ -322,6 +322,51 @@ class TestMemoryCRUD:
         assert {r.memory.id for r in results} == {m.id for m in mems}
 
     @pytest.mark.asyncio
+    async def test_recall_skip_channel_leaves_pool_intact(self, mock_manager, mock_store):
+        """Skipping a channel drops its ranked list from the fusion, not its
+        documents from the candidate pool — otherwise "this ranking does not
+        help" is confounded with "these documents were never considered"."""
+        mem = _mem("Found item")
+        mr = MemoryResult(memory=mem, score=0.8, source="fulltext")
+        mock_store.search_fulltext.return_value = [mr]
+        mock_store.search_semantic.return_value = []
+
+        # fulltext is the only channel with results; drop it from the fusion and
+        # the document must still be reachable via the pool-derived channels.
+        results = await mock_manager.recall("Found", skip=["fulltext"])
+        assert [r.memory.id for r in results] == [mem.id]
+
+    @pytest.mark.asyncio
+    async def test_recall_skip_all_channels_raises(self, mock_manager, mock_store):
+        """Fusing nothing is a harness bug, not a valid configuration."""
+        from epimneme.manager import RETRIEVAL_CHANNELS
+
+        mem = _mem("Found item")
+        mock_store.search_fulltext.return_value = [
+            MemoryResult(memory=mem, score=0.8, source="fulltext")
+        ]
+        mock_store.search_semantic.return_value = []
+
+        with pytest.raises(ValueError, match="nothing left to fuse"):
+            await mock_manager.recall("Found", skip=sorted(RETRIEVAL_CHANNELS))
+
+    @pytest.mark.asyncio
+    async def test_recall_skip_accepts_channels_and_stages_together(
+        self, mock_manager, mock_store
+    ):
+        """The sweep mixes both kinds of name in one skip list."""
+        mem = _mem("Found item")
+        mock_store.search_fulltext.return_value = [
+            MemoryResult(memory=mem, score=0.8, source="fulltext")
+        ]
+        mock_store.search_semantic.return_value = []
+
+        results = await mock_manager.recall(
+            "Found", skip=["fulltext", "mmr", "tiebreak"]
+        )
+        assert [r.memory.id for r in results] == [mem.id]
+
+    @pytest.mark.asyncio
     async def test_recall_update_access_false_suppresses_decay_writes(
         self, mock_manager, mock_store
     ):

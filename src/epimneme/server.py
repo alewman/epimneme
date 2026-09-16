@@ -67,7 +67,7 @@ from epimneme.bulk_import import (
     import_project_files,
     import_chat_directory,
 )
-from epimneme.manager import POSTFUSION_STAGES, MemoryManager
+from epimneme.manager import POSTFUSION_STAGES, RETRIEVAL_CHANNELS, MemoryManager
 from epimneme.migrations.runner import MigrationRunner
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -414,12 +414,13 @@ async def api_recall(
 
     skip_stages = [x.strip() for x in skip.split(",") if x.strip()] if skip else []
     if skip_stages:
-        unknown = sorted(set(skip_stages) - POSTFUSION_STAGES)
+        valid = POSTFUSION_STAGES | RETRIEVAL_CHANNELS
+        unknown = sorted(set(skip_stages) - valid)
         if unknown:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown recall stage(s) to skip: {unknown}; "
-                       f"valid: {sorted(POSTFUSION_STAGES)}",
+                       f"valid: {sorted(valid)}",
             )
 
     # Parse comma-separated tags

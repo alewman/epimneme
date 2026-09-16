@@ -56,17 +56,40 @@ from longmemeval_bench import (  # noqa: E402
 from metrics import session_id_from_corpus_id  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from epimneme.manager import POSTFUSION_STAGES  # noqa: E402
+from epimneme.manager import POSTFUSION_STAGES, RETRIEVAL_CHANNELS  # noqa: E402
 
 
 class FatalAblationError(RuntimeError):
     """A condition that invalidates the whole run, not just one question."""
 
 
-def build_configs(stages: list[str]) -> list[tuple[str, list[str]]]:
-    """(label, skip-list) pairs: baseline, each stage removed, baseline again."""
+# Stages the 2026-09-15 live leave-one-out found changed no answer in 500
+# questions. Removing them one at a time is measured; removing them together is
+# not, and a leave-one-out cannot see interactions between them.
+INERT_STAGES = ["tiebreak", "proper_noun", "temporal_boost", "temporal_partition"]
+
+
+def build_configs(
+    stages: list[str], combos: bool = True
+) -> list[tuple[str, list[str]]]:
+    """(label, skip-list) pairs.
+
+    baseline, each stage/channel removed alone, any combination probes, then the
+    baseline again as `baseline_check`. Order matters only in that the two
+    baselines bracket the sweep — everything between them must be scored against
+    a corpus that did not move.
+    """
     cfgs: list[tuple[str, list[str]]] = [("baseline", [])]
     cfgs += [(f"-{s}", [s]) for s in stages]
+    if combos:
+        inert = [s for s in INERT_STAGES if s in stages]
+        if len(inert) > 1:
+            cfgs.append(("-ALL_INERT", inert))
+        chans = [c for c in sorted(RETRIEVAL_CHANNELS) if c in stages]
+        # The offline replay claimed dropping fulltext was worth +21.4pp and it
+        # was worth zero live. Keep the direct live equivalent in the sweep.
+        if "fulltext" in chans and "date_proximity" in chans:
+            cfgs.append(("-fulltext-date_proximity", ["fulltext", "date_proximity"]))
     cfgs.append(("baseline_check", []))
     return cfgs
 
@@ -251,6 +274,8 @@ async def main() -> int:
     ap.add_argument("--stages", default="",
                     help="Comma-separated stages to ablate (default: all)")
     ap.add_argument("--no-cleanup", action="store_true")
+    ap.add_argument("--no-combos", action="store_true",
+                    help="Leave-one-out only; skip the combination probes")
     ap.add_argument("--score", default="",
                     help="Score an existing run file and exit (no server needed)")
     ap.add_argument("--metric", default="s_any@5")
@@ -264,14 +289,15 @@ async def main() -> int:
         print("ERROR: pass --token or set EPIMNEME_TOKEN", file=sys.stderr)
         return 2
 
+    valid = POSTFUSION_STAGES | RETRIEVAL_CHANNELS
     stages = ([x.strip() for x in args.stages.split(",") if x.strip()]
-              if args.stages else sorted(POSTFUSION_STAGES))
-    unknown = sorted(set(stages) - POSTFUSION_STAGES)
+              if args.stages else sorted(valid))
+    unknown = sorted(set(stages) - valid)
     if unknown:
         print(f"ERROR: unknown stage(s): {unknown}\n"
-              f"valid: {sorted(POSTFUSION_STAGES)}", file=sys.stderr)
+              f"valid: {sorted(valid)}", file=sys.stderr)
         return 2
-    configs = build_configs(stages)
+    configs = build_configs(stages, combos=not args.no_combos)
 
     entries = load_data(args.data_file)
     if args.limit:

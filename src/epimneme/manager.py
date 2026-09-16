@@ -59,6 +59,19 @@ from epimneme.stores.postgresql import PostgresStore
 logger = logging.getLogger(__name__)
 
 
+RETRIEVAL_CHANNELS = frozenset({
+    "semantic", "fulltext", "bm25", "entity", "date_proximity", "turn_pair",
+})
+"""RRF input channels that `recall(skip=...)` can leave out of the FUSION.
+
+Dropping a channel here removes its ranked list from RRF but leaves the
+candidate pool intact — the pool is the union of the semantic and full-text
+results, and rebuilding it would confound "this channel's ranking does not
+help" with "these documents were never considered". That matches the offline
+replay in `ablate_channels.py`, so the two are comparable.
+"""
+
+
 POSTFUSION_STAGES = frozenset({
     "proper_noun",      # 4b  name-match boost
     "decay",            # 4c  retrievability multiplier
@@ -670,7 +683,7 @@ class MemoryManager:
         existing caller's behavior when omitted.
         """
         skip = set(skip)
-        unknown = skip - POSTFUSION_STAGES
+        unknown = skip - POSTFUSION_STAGES - RETRIEVAL_CHANNELS
         if unknown:
             raise ValueError(f"unknown recall stage(s) to skip: {sorted(unknown)}")
 
@@ -726,16 +739,27 @@ class MemoryManager:
 
         # ── 3. Additional ranked-list signals ───────────────────────────
         kw_weight = adaptive_keyword_weight(query, self.config.rrf_keyword_weight)
-        rrf_lists: list[list[MemoryResult]] = [semantic_results, fulltext_results]
-        rrf_weights: list[float] = [self.config.rrf_vector_weight, kw_weight]
-        rrf_channel_names: list[str] = ["semantic", "fulltext"]
+        rrf_lists: list[list[MemoryResult]] = []
+        rrf_weights: list[float] = []
+        rrf_channel_names: list[str] = []
+        # `candidates` above is deliberately built before this gating: skipping a
+        # channel drops its ranked list from the fusion, not its documents from
+        # the pool.
+        if "semantic" not in skip:
+            rrf_lists.append(semantic_results)
+            rrf_weights.append(self.config.rrf_vector_weight)
+            rrf_channel_names.append("semantic")
+        if "fulltext" not in skip:
+            rrf_lists.append(fulltext_results)
+            rrf_weights.append(kw_weight)
+            rrf_channel_names.append("fulltext")
 
-        if self.config.bm25_signal_enabled and candidates:
+        if self.config.bm25_signal_enabled and candidates and "bm25" not in skip:
             rrf_lists.append(bm25_rank(query, candidates))
             rrf_weights.append(self.config.bm25_signal_weight)
             rrf_channel_names.append("bm25")
 
-        if self.config.entity_signal_enabled and candidates:
+        if self.config.entity_signal_enabled and candidates and "entity" not in skip:
             rrf_lists.append(entity_overlap_rank(query, candidates))
             rrf_weights.append(self.config.entity_signal_weight)
             rrf_channel_names.append("entity")
@@ -744,7 +768,7 @@ class MemoryManager:
         _target_date: _date | None = None
         if candidates and parsed_ref is not None:
             _target_date = parse_target_date(query, parsed_ref)
-        if _target_date is not None:
+        if _target_date is not None and "date_proximity" not in skip:
             rrf_lists.append(date_proximity_rank(candidates, _target_date))
             rrf_weights.append(self.config.date_signal_weight)
             rrf_channel_names.append("date_proximity")
@@ -753,10 +777,15 @@ class MemoryManager:
         # we defer to step 5 where ordinals are populated.
 
         # Turn-pair signal (cheap, always safe)
-        if candidates:
+        if candidates and "turn_pair" not in skip:
             rrf_lists.append(turn_pair_rank(candidates))
             rrf_weights.append(self.config.turn_pair_signal_weight)
             rrf_channel_names.append("turn_pair")
+
+        if not rrf_lists:
+            raise ValueError(
+                "every RRF channel was skipped — there is nothing left to fuse"
+            )
 
         if debug is not None:
             debug["channels"] = {
