@@ -1289,3 +1289,80 @@ and still change what the reader answers, which only an e2e run measures. And
 the harness queries at `limit=50` to match the capture, while production recalls
 at 10–20 — MMR's `session_cap` and `limit` therefore run in a more permissive
 regime here than in production.
+
+## September 2026 — Why "the right session but not the right evidence" is mostly an artifact
+
+The turn-level numbers (`recall_all@10` 0.094, `evidence_completeness@10` 0.527)
+have been read as a retrieval failure: we find the answer session but miss the
+evidence inside it. Measured against the 500-question ablation capture, that
+reading is **mostly wrong**, and the part that survives points somewhere else.
+
+### `turn_correct` is defined circularly
+
+LongMemEval-S carries no turn-level annotation. An entry's only answer key is
+`answer_session_ids`; there is no `answer_evidence` field. Every harness here
+(`longmemeval_bench.py`, `capture_channels.py`, `ablate_stages.py`) therefore
+defines the turn gold as:
+
+```python
+turn_correct = {cid for cid in corpus_ids
+                if session_id_from_corpus_id(cid) in answer_sids}
+```
+
+— *every turn of a gold session*. So the measured "gold density" inside a gold
+session is **100.0%** by construction, and the turn metric is not a finer-grained
+measurement of evidence. It is the session metric restated, then scored against a
+slot budget too small to hold the answer.
+
+### The budget cannot hold it
+
+| quantity | value |
+|---|---|
+| gold sessions per question | median 2 (mean 1.9) |
+| turns in a gold session | median 6 (mean 5.8) |
+| gold turns per question | **median 12** (mean 11.0, p90 18, max 36) |
+| questions needing > 10 gold turns | **309/500 = 61.8%** |
+| mean arithmetic ceiling on EC@10 | **0.855** |
+
+For 61.8% of questions `recall_all@10` is **arithmetically impossible**: the
+answer needs more than 10 turns and there are 10 slots. Restricted to the 191
+questions where it is achievable, `recall_all@10` is **0.246**, not 0.094.
+
+### What survives
+
+Against its own ceiling, EC@10 is 0.527 / 0.855 = **0.618**. So roughly 38% of
+what *could* fit does not, and that residue is real. Its cause is dilution, not
+turn ranking: the top 10 spans a median of **5.4 distinct sessions** when the
+answer lives in **1.9**. Slots are spent on sessions that cannot contain the
+answer.
+
+MMR was the obvious suspect — `mmr_session_cap=2` caps turns per session, and the
+observed top-10 holds 1.85 turns per session, which looks exactly like the cap
+biting. It is not the cause. On the 263 questions where MMR fires, removing it
+moves distinct sessions only 5.49 → 5.30 and turn EC@10 only 0.553 → 0.559. The
+fused ranking is already spread across ~5.3 sessions before MMR touches it.
+
+### The lever is session expansion, not better turn ranking
+
+Gold turns within a session are **100% contiguous** (941/941 multi-turn cases),
+and session-level retrieval is near-saturated at R@10 = 0.982. Taking every turn
+of the sessions already present in the top 10 would lift turn EC@10 from
+**0.527 → 0.933**, at a cost of ~31 turns instead of 10.
+
+That is the same idea as Phase 3's parent expansion, which was measured as
+near-useless (28/500 eligible, ≤3 rescues) — but that was gated at the assembly
+layer on a narrow condition. The measurement above says the mechanism is right
+and the gate was wrong.
+
+Whether 31 turns is affordable is a reader question, not a retrieval one: the
+assembly budget, not recall@k, decides it. That is the experiment to run, and it
+should be judged e2e — the retrieval metric above cannot score it, because
+expanding to whole sessions makes `turn_correct` trivially satisfiable.
+
+### Consequence for reading this document
+
+Any turn-level number here is **session recall under a slot budget**, not
+evidence quality. `recall_all@10` in particular is dominated by the 61.8% of
+questions where it cannot be achieved, and is close to meaningless as a
+comparison metric between configs. EC@10 is usable but should be read against
+the 0.855 ceiling, not against 1.0.
