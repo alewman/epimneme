@@ -1366,3 +1366,85 @@ evidence quality. `recall_all@10` in particular is dominated by the 61.8% of
 questions where it cannot be achieved, and is close to meaningless as a
 comparison metric between configs. EC@10 is usable but should be read against
 the 0.855 ceiling, not against 1.0.
+
+## September 2026 — Consolidated live ablation: channels + stages + combinations
+
+500 questions x 24 configs, 0 failures, `baseline == baseline_check` on all 500.
+Channels are now ablated **live** (`skip` drops a channel's ranked list from the
+fusion but leaves the candidate pool intact, matching the offline replay's
+semantics so the two are comparable).
+
+### Session recall cannot discriminate here
+
+At R@5 = 0.968 nearly every config is identical: 17 of 22 show +0.000 with at
+most one discordant question. Only `keyword_rerank` moves it (−0.022, p=0.035).
+Session recall is saturated and is the wrong instrument for these comparisons.
+Turn EC@10 (0.528, ceiling 0.855) has room, so it is scored below with a paired
+exact test.
+
+### Turn EC@10, paired against baseline (500 q)
+
+| removed | EC@10 | /ceiling | Δ | better | worse | p |
+|---|---|---|---|---|---|---|
+| *(baseline)* | 0.528 | 0.618 | — | — | — | — |
+| − semantic | 0.507 | 0.593 | −0.021 | 14 | 107 | **<0.001** |
+| − turn_pair_boost | 0.516 | 0.605 | −0.011 | 9 | 55 | **<0.001** |
+| − entity | 0.522 | 0.612 | −0.005 | 7 | 39 | **<0.001** |
+| − decay | 0.524 | 0.614 | −0.003 | 11 | 29 | **0.006** |
+| − turn_pair | 0.525 | 0.615 | −0.003 | 4 | 21 | **0.001** |
+| − keyword_rerank | 0.525 | 0.613 | −0.003 | 147 | 167 | 0.284 |
+| − ALL_INERT | 0.525 | 0.616 | −0.003 | 13 | 22 | 0.175 |
+| − bm25 | 0.526 | 0.616 | −0.002 | 13 | 24 | 0.099 |
+| − temporal_boost | 0.526 | 0.617 | −0.001 | 1 | 6 | 0.125 |
+| − proper_noun | 0.527 | 0.618 | −0.001 | 8 | 13 | 0.383 |
+| − temporal_partition | 0.527 | 0.618 | −0.001 | 2 | 4 | 0.688 |
+| − date_proximity | 0.528 | 0.618 | −0.000 | 3 | 4 | 1.000 |
+| − maxsim / preference / prf / recency / temporal_filter / tiebreak / vague_entities | 0.528 | 0.618 | +0.000 | 0 | 0 | 1.000 |
+| **− mmr** | 0.531 | 0.622 | **+0.003** | 18 | 2 | **<0.001** |
+| **− fulltext** | 0.531 | 0.624 | **+0.004** | 41 | 14 | **<0.001** |
+
+### The offline channel replay was wrong about every channel
+
+Offline leave-one-out vs the live measurement, ΔR@5:
+
+| channel | offline replay | live |
+|---|---|---|
+| semantic | −0.142 | −0.002 |
+| bm25 | −0.046 | +0.000 |
+| entity | −0.020 | +0.000 |
+| turn_pair | −0.012 | +0.000 |
+| date_proximity | −0.004 | +0.000 |
+| fulltext | +0.032 | +0.000 |
+
+The channel ensemble is **nearly inert live**. Post-fusion processing dominates
+so completely that which lists went into the fusion barely survives it. The
+banner over the offline section is now justified by measurement, not caution.
+
+**The full-text verdict, corrected twice.** Offline said removing it was worth
++21.4pp R@1. The live weight sweep said zero. This run says it is a real but
+*small* win, visible only on evidence completeness: +0.004 EC@10, 41 questions
+better against 14 worse, p<0.001. Direction right, magnitude wrong by ~50x.
+Combined with `date_proximity` (also dead: p=1.000) the result is unchanged,
+so both can go together.
+
+### Prune list, live-measured
+
+- **Remove, mild gain:** `fulltext` (+0.004, p<0.001), `mmr` (+0.003, p<0.001).
+- **Remove, no measurable cost:** `tiebreak`, `date_proximity`, `temporal_partition`,
+  `proper_noun`, `temporal_boost`, plus the config-disabled `maxsim`, `prf`,
+  `temporal_filter`. Removing the first four *together* (`−ALL_INERT`) costs
+  −0.003 EC at p=0.175 and *improves* R@1 to 0.864, so they do not interact.
+- **Untestable here, do not touch:** `preference`, `recency`, `vague_entities` —
+  their query gates never open on this benchmark (see the artifact section).
+- **Keep:** `semantic` (much the largest contributor), `turn_pair_boost`,
+  `entity`, `turn_pair`, `decay` (small but significant, p=0.006), and
+  `keyword_rerank` — which is a *session-level* win (R@5 −0.022, p=0.035) with no
+  significant turn-level effect (p=0.284).
+
+### Proportion
+
+Every effect here is small: the largest, `semantic`, is 2.1pp of EC@10 on a 0.528
+base against a 0.855 ceiling. These are retrieval metrics on a saturated
+benchmark, and none of it has been confirmed against the e2e score of 0.732.
+The prune list is justified as *simplification with no measured cost*, not as an
+accuracy improvement.
