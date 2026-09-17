@@ -1536,3 +1536,87 @@ condemned by the session-level table" is withdrawn: on true gold it is p=0.500.
 Turn-level metrics must use `has_answer_gold()`. Any turn number in this document
 dated before this section was computed on the inflated gold and should be read as
 session recall wearing a different name.
+
+## September 2026 — Embedder baseline: all-MiniLM-L6-v2, semantic channel only
+
+The fork reference. `sem_chunking_sim.py --model all-MiniLM-L6-v2`, full 500
+questions (not the 200-question stratified sample the 2026-09-07 run used),
+inside `engram:latest` so the production embedder and library versions are
+pinned (ST 6.0.1, torch 2.14.0+cpu). 837,499 unique texts encoded, 11,533s.
+Gold is the dataset's `has_answer` turns throughout — this script never used the
+inflated session-wide gold, so these numbers are directly comparable to the
+2026-09-07 run and unaffected by that bug.
+
+### Baseline, micro-averaged over 500 questions
+
+| variant | turn EC@10 | turn@50 | tAll@10 | tHit@1 | sessR@1 | sessR@10 |
+|---|---|---|---|---|---|---|
+| **`head`** (production: one vector, first 256 tok) | **75.9%** | 95.4% | **70.1%** | **46.1%** | **84.4%** | **96.8%** |
+| `win` (254-tok sliding, max-pooled) | 75.0% | 96.1% | 69.7% | 45.1% | 85.4% | 97.8% |
+| `role` ({pair, USER, ASSISTANT}, max) | 78.1% | 95.5% | 73.9% | 49.1% | 86.4% | 97.4% |
+| `role_win` (role chunks, windowed) | 77.7% | **96.3%** | 73.7% | **49.9%** | **87.8%** | 97.6% |
+
+Per type, `head`: knowledge-update EC 91.7%, single-session-assistant 100%,
+single-session-user 93.8%, single-session-preference 79.5%, temporal-reasoning
+69.1%, **multi-session 66.3%** (tAll@10 50.4% — the weakest cell in the table).
+
+### What the machinery above the embedder is worth
+
+Against the full live pipeline on the same 500 questions and the same true gold:
+
+| | semantic only (`head`) | full pipeline | Δ |
+|---|---|---|---|
+| turn EC@10 | 75.9% | **87.1%** | **+11.2pp** |
+| turn hit@1 | 46.1% | **58.5%** | **+12.4pp** |
+| session R@1 | 84.4% | 85.8% | +1.4pp |
+| session R@10 | 96.8% | 98.2% | +1.4pp |
+
+**This corrects the reading of the leave-one-out results.** The consolidated
+ablation found almost every channel and stage individually removable, which was
+taken to mean the ensemble is nearly inert. It is not: the whole stack above the
+embedder is worth **+11.2pp of evidence completeness and +12.4pp of top-1 turn
+accuracy** over the raw embedder. Those facts are compatible because the
+components are *redundant* — each one is individually replaceable because the
+others cover for it. A leave-one-out measures marginal contribution, never the
+ensemble's total, and the prune list should be read with that in mind: removing
+one is free, and removing several was only tested for the four flattest.
+
+Note also where the stack does *not* help: session recall is +1.4pp, already
+near saturation from the embedder alone. Everything the machinery buys is at the
+turn level.
+
+### The 2026-09-07 chunking NO-GO: statistically resolved, economically unchanged
+
+That run measured `role_win` at +2.8pp turn@10 / +4.0pp session R@1 and set it
+aside as inside the ±4.5pp sampling noise of a 354-gold-turn sample. At full
+population the effect is real and slightly smaller: `role` +2.2pp EC@10 / +2.0pp
+sessR@1, `role_win` +1.8pp / +3.4pp. There is no sampling question left — this is
+the whole benchmark.
+
+Two reasons the decision should nevertheless stand:
+
+1. `multi-session` still barely moves (66.3% → 68.7%), which was the substantive
+   objection. The gain is concentrated where the fused system is already saturated.
+2. **A semantic-only gain is not a pipeline gain.** That is the lesson of the
+   full-text channel, which looked worth +21.4pp offline and measured zero live.
+   The stack above the embedder contributes +11.2pp and demonstrably repairs
+   weak semantic input, so it may absorb a +2.2pp semantic improvement entirely.
+
+Productionizing sub-chunk embeddings still costs a child vector table, ~3× HNSW
+rows, backup/restore plumbing and a three-benchmark re-validation. Confirm live
+before paying that, exactly as the original decision said: revisit alongside an
+embedder change.
+
+### Using this as the fork reference
+
+Re-run with `--model <candidate>` and compare the `head` row, which is production
+indexing. `--variants head` is ~4× cheaper for a first screen. Watch **turn
+EC@10 and tHit@1** — session R@10 is at 96.8% on the current embedder and has
+essentially no room to show an improvement.
+
+Caveats. The offline screen ranks the entire ~249-doc corpus while the live
+pipeline's semantic channel prefetches 150; both still emit a top-10, so the
+comparison is between finished rankings, not candidate pools. And the script
+accumulates sums rather than per-question rows, so no paired significance test is
+possible on these variant differences — the point estimates are exact for this
+benchmark, but generalization beyond LME-S is untested.
