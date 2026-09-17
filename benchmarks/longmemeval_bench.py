@@ -93,6 +93,45 @@ def load_data(data_file: str) -> list[dict]:
 # =============================================================================
 
 
+def has_answer_gold(entry: dict) -> set[str]:
+    """corpus_ids of the turn-pairs the dataset actually flags as evidence.
+
+    LongMemEval-S annotates evidence at the TURN level: turns inside an answer
+    session carry `has_answer`. Only ~8.6% of a gold session's turns are flagged
+    (median 1 of 12).
+
+    The harnesses here long used "every turn of a gold session" as the turn gold
+    instead, which inflates it ~6x and makes the turn metrics a restatement of
+    session recall rather than a measure of evidence. Use this instead; the walk
+    mirrors `build_corpus(granularity="turn-pair")` exactly so the ids line up.
+
+    CAVEAT: 21 of the 500 LME-S questions carry no flagged turn at all. Exclude
+    them when averaging — `evidence_completeness` returns 1.0 for an empty gold
+    set, so leaving them in hands those questions a free perfect score.
+    """
+    gold_sess = set(entry["answer_session_ids"])
+    out: set[str] = set()
+    for session, sess_id in zip(entry["haystack_sessions"], entry["haystack_session_ids"]):
+        turn_num = 0
+        i = 0
+        while i < len(session):
+            turn = session[i]
+            if turn["role"] == "user":
+                flagged = bool(turn.get("has_answer"))
+                if i + 1 < len(session) and session[i + 1]["role"] == "assistant":
+                    flagged = flagged or bool(session[i + 1].get("has_answer"))
+                    i += 1
+                if sess_id in gold_sess and flagged:
+                    out.add(f"{sess_id}_turn_{turn_num}")
+                turn_num += 1
+            elif turn["role"] == "assistant" and turn_num == 0:
+                if sess_id in gold_sess and bool(turn.get("has_answer")):
+                    out.add(f"{sess_id}_turn_{turn_num}")
+                turn_num += 1
+            i += 1
+    return out
+
+
 def build_corpus(entry: dict, granularity: str = "session") -> tuple[list[str], list[str], list[str]]:
     """Build corpus from haystack sessions.
 
@@ -282,11 +321,10 @@ async def process_question(
         session_level_ids = [session_id_from_corpus_id(cid) for cid in ranked_ids]
         session_correct = answer_sids
 
-        turn_correct = set()
-        for cid in corpus_ids:
-            sid = session_id_from_corpus_id(cid)
-            if sid in answer_sids:
-                turn_correct.add(cid)
+        # Real evidence turns. The old definition ("every turn of a gold
+        # session") inflated this ~6x and made the turn metrics a restatement
+        # of session recall — see has_answer_gold().
+        turn_correct = has_answer_gold(entry)
 
         session_metrics = {}
         turn_metrics = {}

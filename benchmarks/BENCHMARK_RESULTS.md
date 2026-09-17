@@ -1448,3 +1448,91 @@ base against a 0.855 ceiling. These are retrieval metrics on a saturated
 benchmark, and none of it has been confirmed against the e2e score of 0.732.
 The prune list is justified as *simplification with no measured cost*, not as an
 accuracy improvement.
+
+
+## September 2026 — CORRECTION: the turn gold was wrong, and so were the conclusions drawn from it
+
+The section above titled "the turn-level 'evidence gap' is mostly an artifact"
+reached the right verdict from a wrong premise, and the EC-based rankings in the
+consolidated ablation were computed on a bad gold set. Both are corrected here.
+**Where this section disagrees with an earlier one, this section is right.**
+
+### LongMemEval-S *does* annotate evidence at the turn level
+
+The earlier claim that the dataset carries no turn-level annotation was wrong. It
+was based on the top-level entry keys; the annotation lives one level down, as a
+`has_answer` flag on individual turns inside `haystack_sessions`.
+`benchmarks/sem_chunking_sim.py` has used it correctly since it was written.
+
+The real density is nothing like what the harnesses assumed:
+
+| | harness gold ("all turns of a gold session") | true gold (`has_answer`) |
+|---|---|---|
+| gold turns per question | median 12, mean 11.0 | **median 2, mean 1.8** |
+| gold turns per gold session | median 6 (100% of it) | **median 1 (8.6% of it)** |
+
+The harness definition **inflates the turn gold ~6x**. `has_answer_gold()` in
+`longmemeval_bench.py` now computes it properly; 21 of 500 questions carry no
+flagged turn and must be excluded from averages, because
+`evidence_completeness` returns 1.0 for an empty gold set.
+
+### Turn-level retrieval is not a problem at all
+
+Recomputed over the same 500-question capture, baseline, true gold, 479 usable:
+
+| metric | harness gold | **true gold** |
+|---|---|---|
+| turn EC@10 | 0.527 | **0.871** |
+| turn recall_all@10 | 0.094 | **0.789** |
+| turn hit@1 | — | 0.585 |
+| turn hit@10 | — | **0.952** |
+
+The evidence is being retrieved. `recall_all@10` of 0.094 was never a finding —
+it was a 6x-inflated gold set measured against 10 slots.
+
+### The session-expansion recommendation is withdrawn
+
+The previous section projected turn EC@10 0.527 → 0.933 by expanding retrieved
+sessions to all their turns, and called it the one lever with real headroom.
+That is wrong. True EC@10 is **already 0.871**, and expansion "improved" the
+metric only because the metric's gold was *defined* as whole sessions — it was
+guaranteed to score well by construction. **Do not build session expansion on
+this evidence.**
+
+### Every EC-based significance claim in the consolidated ablation flips
+
+Same rankings, same configs, true gold, paired exact test (479 q):
+
+| removed | EC@10 (harness gold) | p | **EC@10 (true gold)** | **p** |
+|---|---|---|---|---|
+| keyword_rerank | −0.003 | 0.284 | **−0.066** | **<0.001** |
+| semantic | −0.021 | <0.001 | **−0.008** | **0.012** |
+| ALL_INERT | −0.003 | 0.175 | −0.010 | 0.125 |
+| entity | −0.005 | <0.001 | −0.003 | 0.125 |
+| turn_pair_boost | −0.011 | <0.001 | −0.003 | 0.500 |
+| turn_pair | −0.003 | 0.001 | −0.002 | 0.250 |
+| decay | −0.003 | 0.006 | −0.000 | 1.000 |
+| bm25 | −0.002 | 0.099 | −0.005 | 0.549 |
+| mmr | **+0.003** | **<0.001** | −0.002 | 1.000 |
+| fulltext | **+0.004** | **<0.001** | +0.001 | 0.754 |
+
+Only **two** effects survive on real evidence: `keyword_rerank` (−0.066,
+p<0.001 — far larger than the bad metric showed, and it is no longer
+"session-level only") and `semantic` (−0.008, p=0.012). Everything else is
+indistinguishable from noise.
+
+**Consequences for the prune list.** The recommendation to remove `fulltext` and
+`mmr` "for a small significant gain" is withdrawn — both are neutral (p=0.754,
+p=1.000), not positive. The *rest* of the prune list survives and is in fact
+better supported: `tiebreak`, `date_proximity`, `temporal_partition`,
+`proper_noun`, `temporal_boost` are all flat on real evidence too. But the
+justification is now purely "no measured cost", with no accuracy upside claimed.
+
+Likewise the earlier claim that `turn_pair_boost` "would have been wrongly
+condemned by the session-level table" is withdrawn: on true gold it is p=0.500.
+
+### Standing rule
+
+Turn-level metrics must use `has_answer_gold()`. Any turn number in this document
+dated before this section was computed on the inflated gold and should be read as
+session recall wearing a different name.
