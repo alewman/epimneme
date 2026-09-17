@@ -62,8 +62,95 @@ ap.add_argument("--max-seq", type=int, default=256,
 ap.add_argument("--variants", default="head,win,role,role_win",
                 help="Indexing strategies to score. `head` alone is production behaviour "
                      "and is ~4x cheaper.")
+ap.add_argument("--query-prefix", default="",
+                help="Prepended to the QUESTION only. Instruction-tuned embedders "
+                     "(Qwen3-Embedding, E5, BGE) expect one and score materially worse "
+                     "without it, so omitting it understates the candidate.")
+ap.add_argument("--doc-prefix", default="",
+                help="Prepended to every DOCUMENT chunk (e.g. E5's 'passage: ').")
+ap.add_argument("--rows", default="",
+                help="Write one JSON object per question per variant to this path. "
+                     "Required for a paired significance test between two models — the "
+                     "aggregate report cannot support one.")
+ap.add_argument("--compare", nargs=2, metavar=("BASE", "CAND"),
+                help="Paired comparison of two --rows files. Loads no model; every other "
+                     "argument is ignored.")
 args = ap.parse_args()
 data_path, limit, every, offset = args.data_path, args.limit, args.every, args.offset
+
+
+def _load_rows(path):
+    out = {}
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            out[(r["question_id"], r["variant"])] = r
+    return out
+
+
+def compare(base_path, cand_path):
+    """Paired significance test between two --rows files.
+
+    Questions are matched by id and variant, so a model change is measured on
+    exactly the same questions under exactly the same indexing strategy.
+    """
+    from math import comb
+
+    A, B = _load_rows(base_path), _load_rows(cand_path)
+    keys = sorted(set(A) & set(B))
+    if not keys:
+        sys.exit("the two row files share no (question_id, variant) pairs")
+
+    ma = {A[k]["model"] for k in keys}
+    mb = {B[k]["model"] for k in keys}
+    print(f"paired comparison over {len(keys)} (question, variant) pairs")
+    print(f"  BASE {base_path}: model={sorted(ma)}")
+    print(f"  CAND {cand_path}: model={sorted(mb)}")
+    if ma == mb:
+        print("  !! both files record the SAME model — is CAND really a different embedder?")
+    for field in ("max_seq", "query_prefix", "doc_prefix"):
+        va = {A[k].get(field) for k in keys}
+        vb = {B[k].get(field) for k in keys}
+        if va != vb:
+            print(f"  note: {field} differs — base={sorted(map(str, va))} cand={sorted(map(str, vb))}")
+    bad = [k for k in keys if A[k]["gold_ids"] != B[k]["gold_ids"]]
+    if bad:
+        print(f"  !! {len(bad)} pairs disagree on the gold set — not comparable")
+    print()
+
+    variants = sorted({k[1] for k in keys})
+    for v in variants:
+        vk = [k for k in keys if k[1] == v and A[k]["gold_n"]]
+        if not vk:
+            continue
+        print(f"variant {v}  (n={len(vk)} questions with gold)")
+        print(f"  {'metric':10s} {'base':>8s} {'cand':>8s} {'delta':>8s} "
+              f"{'better':>7s} {'worse':>6s} {'p':>8s}")
+        for metric, cont in (("ec@10", True), ("all10", False), ("hit1", False),
+                             ("ec@50", True), ("s1", False), ("s10", False)):
+            va = [A[k][metric] for k in vk]
+            vb = [B[k][metric] for k in vk]
+            mean_a, mean_b = sum(va) / len(va), sum(vb) / len(vb)
+            w = sum(1 for x, y in zip(va, vb) if y > x)
+            l = sum(1 for x, y in zip(va, vb) if y < x)
+            n = w + l
+            p = (min(1.0, 2 * sum(comb(n, i) for i in range(min(w, l) + 1)) / 2**n)
+                 if n else 1.0)
+            star = " *" if p < 0.05 else ""
+            print(f"  {metric:10s} {mean_a:8.3f} {mean_b:8.3f} {mean_b - mean_a:+8.3f} "
+                  f"{w:7d} {l:6d} {p:8.3f}{star}")
+        print()
+    print("  p is a two-sided exact binomial over the discordant questions. ec@10 and\n"
+          "  ec@50 are continuous per question, so the test is on whether the candidate\n"
+          "  retrieved more of that question's evidence, not on the size of the change.")
+
+
+if args.compare:
+    compare(*args.compare)
+    sys.exit(0)
+
 
 model = SentenceTransformer(args.model)
 model.max_seq_length = args.max_seq
@@ -78,12 +165,29 @@ DIM = (model.get_embedding_dimension() if hasattr(model, "get_embedding_dimensio
        else model.get_sentence_embedding_dimension())
 
 cache: dict[str, np.ndarray] = {}
+
 def embed_all(texts):
+    """Encode DOCUMENT chunks. Cache keys are the raw text; the doc prefix is
+    constant for a run, so it cannot collide across prefixes within one file."""
     todo = [t for t in set(texts) if t not in cache]
     if todo:
-        vecs = model.encode(todo, normalize_embeddings=True, batch_size=128, show_progress_bar=False)
+        vecs = model.encode([args.doc_prefix + t for t in todo],
+                            normalize_embeddings=True, batch_size=128,
+                            show_progress_bar=False)
         for t, v in zip(todo, vecs): cache[t] = v
     return np.stack([cache[t] for t in texts])
+
+
+def embed_query(text):
+    """Encode the QUESTION, which may take a different prefix from documents.
+    Cached under a reserved key so it cannot be confused with the same string
+    encoded as a document."""
+    key = "\x00query\x00" + text
+    if key not in cache:
+        cache[key] = model.encode([args.query_prefix + text],
+                                  normalize_embeddings=True,
+                                  show_progress_bar=False)[0]
+    return cache[key]
 
 def windows(text):
     enc = tok(text, add_special_tokens=False, return_offsets_mapping=True, truncation=False)
@@ -106,10 +210,12 @@ nq = defaultdict(int)
 data = json.load(open(data_path))
 sel = [e for i, e in enumerate(data) if i % every == offset][: limit or None]
 t0 = time.time(); n_enc = 0
+rows_fh = open(args.rows, "w") if args.rows else None
 
 def report(final=False):
     print(("FINAL " if final else "PARTIAL ")
           + f"model={args.model} dim={DIM} max_seq={args.max_seq} "
+            f"qprefix={args.query_prefix!r} dprefix={args.doc_prefix!r} "
             f"questions={sum(nq.values())} unique_texts_embedded={len(cache)} "
             f"elapsed={time.time()-t0:.0f}s")
     print(f"{'qtype':28s} {'n':>4s} {'variant':>9s} {'turn@10':>8s} {'turn@50':>8s} "
@@ -158,18 +264,21 @@ for qi, e in enumerate(sel):
     chunks = {v: [] for v in VARIANTS}
     for cid, sid, doc, uc, ac, g in docs:
         role_parts = [doc] + [c for c in (uc, ac) if c and c != doc]
-        chunks["head"].append([doc])
-        chunks["win"].append(windows(doc))
-        chunks["role"].append(role_parts)
-        rw = []
-        for c in role_parts: rw.extend(windows(c))
-        chunks["role_win"].append(list(dict.fromkeys(rw)))
-    all_texts = [e["question"]]
+        # Only build what was asked for — windowing is the expensive part, and
+        # --variants head must not pay for the three it did not select.
+        if "head" in chunks: chunks["head"].append([doc])
+        if "win" in chunks: chunks["win"].append(windows(doc))
+        if "role" in chunks: chunks["role"].append(role_parts)
+        if "role_win" in chunks:
+            rw = []
+            for c in role_parts: rw.extend(windows(c))
+            chunks["role_win"].append(list(dict.fromkeys(rw)))
+    all_texts = []
     for v in VARIANTS:
         for cl in chunks[v]: all_texts.extend(cl)
     n_enc += len(set(all_texts) - set(cache))
     embed_all(all_texts)
-    q = cache[e["question"]]
+    q = embed_query(e["question"])
     gold_ids = {d[0] for d in docs if d[5]}
     for v in VARIANTS:
         scores = np.array([max(float(q @ cache[c]) for c in cl) for cl in chunks[v]])
@@ -184,8 +293,35 @@ for qi, e in enumerate(sel):
             m["hit1"] += ranked[0] in gold_ids
         m["s1"] += ranked_sess[0] in gold_sess
         m["s10"] += any(s in gold_sess for s in ranked_sess[:10])
+        if rows_fh is not None:
+            top10, top50 = set(ranked[:10]), set(ranked[:50])
+            rows_fh.write(json.dumps({
+                "question_id": e["question_id"],
+                "question_type": qt,
+                "model": args.model,
+                "max_seq": args.max_seq,
+                "query_prefix": args.query_prefix,
+                "doc_prefix": args.doc_prefix,
+                "variant": v,
+                "gold_n": len(gold_ids),
+                "gold_ids": sorted(gold_ids),
+                # Per-question values the paired test consumes. ec@k is this
+                # question's own completeness, not a running total.
+                "ec@10": (len(gold_ids & top10) / len(gold_ids)) if gold_ids else 0.0,
+                "ec@50": (len(gold_ids & top50) / len(gold_ids)) if gold_ids else 0.0,
+                "all10": float(bool(gold_ids) and gold_ids <= top10),
+                "hit1": float(bool(gold_ids) and ranked[0] in gold_ids),
+                "s1": float(ranked_sess[0] in gold_sess),
+                "s10": float(any(x in gold_sess for x in ranked_sess[:10])),
+                # Kept so a future metric can be recomputed without re-encoding.
+                "ranked_top50": ranked[:50],
+            }) + "\n")
+            rows_fh.flush()
     nq[qt] += 1
     if (qi + 1) % 25 == 0:
         print(f"progress {qi+1}/{len(sel)} elapsed={time.time()-t0:.0f}s cache={len(cache)}", file=sys.stderr, flush=True)
     if (qi + 1) % 100 == 0: report()
 report(final=True)
+if rows_fh is not None:
+    rows_fh.close()
+    print(f"per-question rows written to {args.rows}")
