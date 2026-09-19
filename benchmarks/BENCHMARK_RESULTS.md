@@ -1715,3 +1715,86 @@ conversion could in principle differ from the HF model in a way the MiniLM check
 would not catch. Confirming would mean an ST-backend Qwen run on a subset
 (~2.5h on CPU for 30 questions). Worth doing before publishing this result
 anywhere beyond the project.
+
+## September 2026 — EmbeddingGemma wins decisively; the fork premise was right
+
+Qwen3-Embedding-0.6B was the wrong candidate, not evidence against the premise.
+Two more candidates screened through the same validated Ollama path, same 500
+questions, same MiniLM baseline. **Both beat MiniLM; EmbeddingGemma beats it
+decisively.**
+
+### Paired against all-minilm (479 questions carrying gold, `head` indexing)
+
+| candidate | Δ ec@10 | Δ all10 | Δ hit1 | Δ sessR@1 | verdict |
+|---|---|---|---|---|---|
+| **embeddinggemma** (prefixed) | **+0.097** *** | **+0.134** *** | **+0.100** *** | **+0.058** *** | decisive win |
+| bge-m3 | +0.081 *** | +0.099 *** | +0.088 *** | +0.018 (p=0.28) | turn-level win only |
+| embeddinggemma (no prompt) | +0.061 *** | +0.079 *** | +0.056 * | +0.029 * | wins even unprompted |
+| qwen3-0.6b (prefixed) | −0.031 (p=0.14) | −0.035 | −0.006 | −0.035 * | **loses** |
+
+`***` p<0.001, `*` p<0.05. bge-m3 ran 466/500 questions (see failure note below);
+its row is scored on the 445 of those carrying gold.
+
+### Micro-averaged, 500 questions
+
+| model | turn EC@10 | turn@50 | tAll@10 | tHit@1 | sessR@1 | sessR@10 |
+|---|---|---|---|---|---|---|
+| **embeddinggemma** (prefixed) | **81.7%** | **97.9%** | **77.9%** | **51.8%** | **88.6%** | **98.6%** |
+| all-minilm | 75.8% | 95.4% | 69.9% | 46.1% | 84.4% | 96.8% |
+| qwen3-0.6b (prefixed) | 73.8% | 95.0% | 66.4% | 45.5% | 81.6% | 95.0% |
+
+### The headline: the raw embedder beats the whole MiniLM stack
+
+Macro-averaged over the same 479 questions and the same true gold:
+
+| | turn EC@10 | turn hit@1 |
+|---|---|---|
+| MiniLM, semantic channel only | 0.802 | 0.461 |
+| **MiniLM, full live pipeline** (all channels + rerank) | 0.871 | **0.585** |
+| **EmbeddingGemma, semantic channel only** | **0.900** | 0.562 |
+
+**EmbeddingGemma's semantic channel alone retrieves more evidence than the
+entire fused, reranked MiniLM pipeline** (+2.9pp EC@10), while still trailing it
+on top-1 (−2.3pp). The stack was measured earlier as worth +11.2pp EC@10 on top
+of MiniLM; a better embedder delivers more than that on its own.
+
+This raises a question the current ablations cannot answer: how much of that
++11.2pp stack is still needed once the semantic channel is this much stronger?
+Several components were found individually removable even on the weak embedder.
+Re-running the live 24-config ablation on a Gemma-backed pipeline is the obvious
+next measurement, and it may shorten the pipeline considerably.
+
+### Prompts matter, again
+
+EmbeddingGemma's official task prompts (`task: search result | query: ` for
+queries, `title: none | text: ` for documents), same model and backend:
+
+| metric | no prompt | prompted | Δ | p |
+|---|---|---|---|---|
+| ec@10 | 0.863 | 0.900 | **+0.036** | **<0.001** |
+| all10 | 0.779 | 0.833 | +0.054 | **<0.001** |
+| hit1 | 0.518 | 0.562 | +0.044 | **0.013** |
+| sessR@1 | 0.891 | 0.921 | +0.029 | **0.004** |
+
+Third model in a row where the prompt is worth a significant margin (Qwen3:
++0.030 ec@10). **Screening an instruction-tuned embedder without its prompt
+understates it by roughly a third of its total gain.**
+
+### Deployment cost
+
+| model | params | dim | throughput (Mac Metal) | vs MiniLM |
+|---|---|---|---|---|
+| all-minilm | 22M | 384 | 127 texts/s | — |
+| embeddinggemma | 308M | 768 | 29 texts/s | **4.4x slower, 2x the index** |
+| qwen3-0.6b | 596M | 1024 | 11 texts/s | 11.6x slower, 2.7x the index |
+
+EmbeddingGemma costs ~4.4x the embed time and 2x the vector storage. The
+production container embeds on CPU, where the ratio will be worse — ingest
+throughput, not query latency, is the thing to measure before committing.
+
+### Note on the bge-m3 failure
+
+The run died at question 466 on an HTTP 400 from `/api/embed`. The retry helper
+retried it four times, which is wrong: a 400 is deterministic and only transient
+failures (connection errors, 5xx) should be retried. Worth fixing before the
+next long run, along with the cause of the 400 itself.
