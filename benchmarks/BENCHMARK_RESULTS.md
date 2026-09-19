@@ -1620,3 +1620,98 @@ comparison is between finished rankings, not candidate pools. And the script
 accumulates sums rather than per-question rows, so no paired significance test is
 possible on these variant differences — the point estimates are exact for this
 benchmark, but generalization beyond LME-S is untested.
+
+## September 2026 — Candidate embedder screen: Qwen3-Embedding-0.6B does not beat MiniLM
+
+The fork premise was that the embedder is the ceiling. For this candidate it is
+not: **Qwen3-Embedding-0.6B (596M params) does not outperform all-MiniLM-L6-v2
+(22M) on LME-S**, despite 27x the parameters and a 64x larger context window.
+
+### Setup
+
+All three runs used Ollama on Apple Silicon — 0.83 texts/s on this host's CPU
+made a 500-question Qwen run a 42-hour job; on Metal it was ~3.2h. Both models
+were pulled so **baseline and candidate share one backend**, removing the
+quantization/runtime confound rather than caveating it.
+
+| | all-minilm | qwen3-embedding:0.6b |
+|---|---|---|
+| params | 22M | 596M |
+| dim | 384 | 1024 |
+| quantization | F16 | Q8_0 (near-lossless) |
+| context | 512 tok | 32768 tok |
+| pooling | mean | last (correct for Qwen3-Embedding) |
+
+**Backend validated first.** Ollama's `all-minilm` vs the SentenceTransformer
+`all-MiniLM-L6-v2` run: identical on **499 of 500** questions (EC@10 0.803 vs
+0.802). The Ollama path is not introducing error.
+
+### Result — micro-averaged, 500 questions, `head` indexing
+
+| model | turn EC@10 | turn@50 | tAll@10 | tHit@1 | sessR@1 | sessR@10 |
+|---|---|---|---|---|---|---|
+| **all-minilm** | **75.8%** | **95.4%** | **69.9%** | **46.1%** | **84.4%** | **96.8%** |
+| qwen3-0.6b, no prefix | 70.0% | 91.8% | 62.8% | 43.0% | 77.0% | 93.4% |
+| qwen3-0.6b, instruction prefix | 73.8% | 95.0% | 66.4% | 45.5% | 81.6% | 95.0% |
+
+Paired exact binomial against MiniLM (479 questions carrying gold):
+
+| metric | Δ no prefix | p | Δ prefixed | p |
+|---|---|---|---|---|
+| ec@10 | −0.061 | **<0.001** | −0.031 | 0.139 |
+| all10 | −0.071 | **<0.001** | −0.035 | 0.075 |
+| hit1 | −0.031 | 0.210 | −0.006 | 0.858 |
+| ec@50 | −0.033 | **<0.001** | −0.009 | 0.360 |
+| sessR@1 | −0.081 | **<0.001** | −0.035 | **0.046** |
+| sessR@10 | −0.029 | **0.001** | −0.019 | **0.049** |
+
+Properly prefixed, Qwen3 is *statistically indistinguishable* from MiniLM on
+evidence completeness and **significantly worse on session recall**. Unprefixed
+it is worse on everything.
+
+### The instruction prefix is real and necessary
+
+Same model, same backend, prefix the only difference:
+
+| metric | no prefix | prefixed | Δ | p |
+|---|---|---|---|---|
+| ec@10 | 0.742 | 0.772 | **+0.030** | **<0.001** |
+| all10 | 0.628 | 0.664 | +0.035 | **0.002** |
+| hit1 | 0.430 | 0.455 | +0.025 | **0.043** |
+| ec@50 | 0.926 | 0.950 | +0.024 | **<0.001** |
+| sessR@1 | 0.781 | 0.827 | **+0.046** | **<0.001** |
+
+The prefix recovers roughly half the deficit. Any screen of an
+instruction-tuned embedder that omits it is measuring the wrong thing — and
+would have reported a much worse number here.
+
+### Why this is not a configuration failure
+
+The obvious suspects were checked: quantization is Q8_0, pooling is
+`last` (what Qwen3-Embedding requires), the full 32k context was available, and
+the instruction prefix demonstrably works. The backend reproduces MiniLM's
+SentenceTransformer numbers on 499/500 questions.
+
+Note the direction of the context asymmetry: MiniLM truncates at 512 tokens
+while Qwen saw documents whole (median gold turn-pair ≈ 630 tokens). **Qwen had
+the advantage and still lost.**
+
+### What this does and does not say
+
+**Does:** swapping to Qwen3-Embedding-0.6B would not raise this pipeline's
+ceiling, and would cost 27x the parameters, 1024-dim vectors (≈2.7x the pgvector
+index) and a re-embed of the corpus. Not worth forking for on this evidence.
+
+**Does not:** this is one benchmark and one task shape — short questions against
+date-headed conversational turn-pairs, which is close to the symmetric
+short-text retrieval MiniLM was trained for. It says nothing about
+`bge-base-en-v1.5`, `gte`, `e5`, or the larger Qwen3-Embedding-4B/8B. It is also
+a semantic-channel screen; the stack above the embedder contributes +11.2pp
+EC@10 and has been shown to absorb channel-level differences, so a *smaller*
+embedder difference than this would likely vanish in the full pipeline anyway.
+
+**Residual risk.** The backend was validated on MiniLM, not on Qwen — a GGUF
+conversion could in principle differ from the HF model in a way the MiniLM check
+would not catch. Confirming would mean an ST-backend Qwen run on a subset
+(~2.5h on CPU for 30 questions). Worth doing before publishing this result
+anywhere beyond the project.
