@@ -62,6 +62,15 @@ ap.add_argument("--max-seq", type=int, default=256,
 ap.add_argument("--variants", default="head,win,role,role_win",
                 help="Indexing strategies to score. `head` alone is production behaviour "
                      "and is ~4x cheaper.")
+ap.add_argument("--backend", default="st", choices=("st", "ollama"),
+                help="st = SentenceTransformer in-process (CPU here). ollama = remote "
+                     "Ollama /api/embed, which on Apple Silicon is ~100x faster for a "
+                     "0.6B model. Backends are NOT interchangeable mid-comparison: the "
+                     "Ollama builds are GGUF-quantized and truncate by the model's own "
+                     "context, so both sides of a comparison must use the same backend.")
+ap.add_argument("--ollama-url", default="http://10.10.20.167:11434",
+                help="Ollama host for --backend ollama.")
+ap.add_argument("--ollama-batch", type=int, default=64)
 ap.add_argument("--query-prefix", default="",
                 help="Prepended to the QUESTION only. Instruction-tuned embedders "
                      "(Qwen3-Embedding, E5, BGE) expect one and score materially worse "
@@ -110,7 +119,7 @@ def compare(base_path, cand_path):
     print(f"  CAND {cand_path}: model={sorted(mb)}")
     if ma == mb:
         print("  !! both files record the SAME model — is CAND really a different embedder?")
-    for field in ("max_seq", "query_prefix", "doc_prefix"):
+    for field in ("backend", "max_seq", "query_prefix", "doc_prefix"):
         va = {A[k].get(field) for k in keys}
         vb = {B[k].get(field) for k in keys}
         if va != vb:
@@ -152,17 +161,51 @@ if args.compare:
     sys.exit(0)
 
 
-model = SentenceTransformer(args.model)
-model.max_seq_length = args.max_seq
-tok = model.tokenizer
+if args.backend == "ollama":
+    import urllib.error
+    import urllib.request
+
+    _OLLAMA_URL = args.ollama_url.rstrip("/") + "/api/embed"
+
+    def _ollama_embed(texts, attempts=4):
+        """Embed a batch, retrying — a long run should survive a transient blip.
+
+        Ollama does not guarantee normalized vectors, and the scoring here is a
+        plain dot product, so normalize before returning.
+        """
+        payload = json.dumps({"model": args.model, "input": list(texts)}).encode()
+        last = None
+        for i in range(attempts):
+            try:
+                req = urllib.request.Request(
+                    _OLLAMA_URL, data=payload,
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=600) as r:
+                    vecs = np.asarray(json.loads(r.read())["embeddings"], dtype=np.float32)
+                norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+                return vecs / np.maximum(norms, 1e-12)
+            except (urllib.error.URLError, OSError, KeyError) as exc:
+                last = exc
+                time.sleep(2 * (i + 1))
+        raise RuntimeError(f"ollama embed failed after {attempts} attempts: {last}")
+
+    _probe = _ollama_embed([f"{args.model} probe"])
+    DIM = int(_probe.shape[1])
+    tok = None
+    model = None
+else:
+    model = SentenceTransformer(args.model)
+    model.max_seq_length = args.max_seq
+    tok = model.tokenizer
 # Window just under the encode limit, with ~12% overlap so a fact spanning a
 # boundary is whole in some window.
 WIN = args.max_seq - 2
 STRIDE = max(1, int(WIN * 0.875))
 # ST 6.x renamed this; keep both so the script runs on either version — an
 # embedder comparison is worthless if the two runs used different libraries.
-DIM = (model.get_embedding_dimension() if hasattr(model, "get_embedding_dimension")
-       else model.get_sentence_embedding_dimension())
+if args.backend == "st":
+    DIM = (model.get_embedding_dimension() if hasattr(model, "get_embedding_dimension")
+           else model.get_sentence_embedding_dimension())
 
 cache: dict[str, np.ndarray] = {}
 
@@ -171,9 +214,15 @@ def embed_all(texts):
     constant for a run, so it cannot collide across prefixes within one file."""
     todo = [t for t in set(texts) if t not in cache]
     if todo:
-        vecs = model.encode([args.doc_prefix + t for t in todo],
-                            normalize_embeddings=True, batch_size=128,
-                            show_progress_bar=False)
+        prefixed = [args.doc_prefix + t for t in todo]
+        if args.backend == "ollama":
+            vecs = np.concatenate([
+                _ollama_embed(prefixed[i:i + args.ollama_batch])
+                for i in range(0, len(prefixed), args.ollama_batch)
+            ]) if prefixed else np.zeros((0, DIM), dtype=np.float32)
+        else:
+            vecs = model.encode(prefixed, normalize_embeddings=True, batch_size=128,
+                                show_progress_bar=False)
         for t, v in zip(todo, vecs): cache[t] = v
     return np.stack([cache[t] for t in texts])
 
@@ -184,9 +233,12 @@ def embed_query(text):
     encoded as a document."""
     key = "\x00query\x00" + text
     if key not in cache:
-        cache[key] = model.encode([args.query_prefix + text],
-                                  normalize_embeddings=True,
-                                  show_progress_bar=False)[0]
+        if args.backend == "ollama":
+            cache[key] = _ollama_embed([args.query_prefix + text])[0]
+        else:
+            cache[key] = model.encode([args.query_prefix + text],
+                                      normalize_embeddings=True,
+                                      show_progress_bar=False)[0]
     return cache[key]
 
 def windows(text):
@@ -205,6 +257,9 @@ ALL_VARIANTS = ["head", "win", "role", "role_win"]
 VARIANTS = [v.strip() for v in args.variants.split(",") if v.strip()]
 if set(VARIANTS) - set(ALL_VARIANTS):
     sys.exit(f"unknown variant(s): {sorted(set(VARIANTS) - set(ALL_VARIANTS))}")
+if args.backend == "ollama" and ({"win", "role_win"} & set(VARIANTS)):
+    sys.exit("--backend ollama has no tokenizer, so it cannot build sliding windows; "
+             "use --variants head,role or run those variants on --backend st")
 agg = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # qtype -> variant -> metric -> sum
 nq = defaultdict(int)
 data = json.load(open(data_path))
@@ -215,7 +270,7 @@ rows_fh = open(args.rows, "w") if args.rows else None
 def report(final=False):
     print(("FINAL " if final else "PARTIAL ")
           + f"model={args.model} dim={DIM} max_seq={args.max_seq} "
-            f"qprefix={args.query_prefix!r} dprefix={args.doc_prefix!r} "
+            f"backend={args.backend} qprefix={args.query_prefix!r} dprefix={args.doc_prefix!r} "
             f"questions={sum(nq.values())} unique_texts_embedded={len(cache)} "
             f"elapsed={time.time()-t0:.0f}s")
     print(f"{'qtype':28s} {'n':>4s} {'variant':>9s} {'turn@10':>8s} {'turn@50':>8s} "
@@ -300,6 +355,7 @@ for qi, e in enumerate(sel):
                 "question_type": qt,
                 "model": args.model,
                 "max_seq": args.max_seq,
+                "backend": args.backend,
                 "query_prefix": args.query_prefix,
                 "doc_prefix": args.doc_prefix,
                 "variant": v,
