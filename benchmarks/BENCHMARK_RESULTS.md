@@ -1798,3 +1798,37 @@ The run died at question 466 on an HTTP 400 from `/api/embed`. The retry helper
 retried it four times, which is wrong: a 400 is deterministic and only transient
 failures (connection errors, 5xx) should be retried. Worth fixing before the
 next long run, along with the cause of the 400 itself.
+
+### ST spot-check: the Q8_0 quantization cost nothing (risk closed)
+
+The residual risk on the Qwen screen was that Ollama's GGUF might differ from the
+HF model. Closed two ways.
+
+**Vector level** — the same 400 real corpus documents and 30 questions embedded
+through both runtimes: mean cosine **0.99955**, median 0.99942, minimum 0.99728,
+**no vector below 0.99**. Ranking agreement on a mixed 400-doc pool: identical
+top-1 on 27/30, mean top-10 Jaccard 0.958. So the vectors are faithful, and the
+small residue is near-tie reordering.
+
+**Metric level** — a full 30-question run of `Qwen/Qwen3-Embedding-0.6B` through
+the SentenceTransformer backend at `max_seq=1024` (74,098s ≈ 20.6h on CPU),
+paired against the Ollama rows for the same questions:
+
+| metric | Ollama (Q8_0) | ST (fp32) | Δ | discordant |
+|---|---|---|---|---|
+| ec@10 | 0.700 | 0.717 | +0.017 | 1 of 29 |
+| all10 | 0.552 | 0.552 | +0.000 | 0 |
+| hit1 | 0.448 | 0.448 | +0.000 | 0 |
+| ec@50 | 0.948 | 0.948 | +0.000 | 0 |
+| sessR@1 | 0.862 | 0.862 | +0.000 | 0 |
+| sessR@10 | 0.931 | 0.931 | +0.000 | 0 |
+
+Identical on 29 of 30 questions across every metric. **Qwen3-0.6B's
+underperformance is the model, not the runtime**, and the Ollama backend is
+validated for a large model as well as a small one — which is what licenses the
+EmbeddingGemma and bge-m3 results above.
+
+Caveat on the run label: `--compare` reports `max_seq` 256 vs 1024 here, but
+that field is meaningless for an Ollama run — truncation is server-side by the
+model's own context, and the CLI default is simply recorded unused. Worth
+suppressing so it cannot be mistaken for a real difference.
