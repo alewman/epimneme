@@ -1832,3 +1832,73 @@ Caveat on the run label: `--compare` reports `max_seq` 256 vs 1024 here, but
 that field is meaningless for an Ollama run — truncation is server-side by the
 model's own context, and the CLI default is simply recorded unused. Worth
 suppressing so it cannot be mistaken for a real difference.
+
+## September 2026 — EmbeddingGemma deployment cost on the production path
+
+Measured on the real path: CPU, inside `engram:latest`, encoding 300 memories
+sampled from the live database (median **146 tokens**, p90 378, max 1535 — much
+shorter than the LME turn-pairs the quality screen used).
+
+`google/embeddinggemma-300m` is **gated on HuggingFace (manual approval)** and
+the container has no token, so an ungated fine-tune of the same architecture
+stands in. Weights differ; layer count, hidden size and sequence length do not,
+so the timings are the architecture's own. **Cost proxy only** — every quality
+number comes from the Ollama runs.
+
+### Ingest throughput (batch_size=100, as `manage.py` uses)
+
+| config | texts/s | vs MiniLM | memories truncated | re-embed all 1,506 |
+|---|---|---|---|---|
+| **all-MiniLM-L6-v2 @256** (current) | **84.2** | — | 23.3% | 18s |
+| embeddinggemma @256 | 5.6 | 15x slower | 23.3% | 269s |
+| **embeddinggemma @512** | **3.8** | **22x slower** | **6.7%** | 396s |
+| embeddinggemma @2048 | 1.6 | 53x slower | 0% | 945s |
+
+`max_seq=512` is the sweet spot for production text: it covers p90 and truncates
+only 6.7% of memories, while recovering more than half the cost of the full
+2048 window.
+
+### Query latency — on the critical path of every recall
+
+`_embed_query` encodes one string on every `recall()`. Measured with per-config
+warmup, 25 samples, four different query strings, and 512 visited twice:
+
+| model | max_seq | median | best |
+|---|---|---|---|
+| all-MiniLM-L6-v2 | 256 | **2.9 ms** | 2.6 ms |
+| embeddinggemma | 512 | 46.0 ms / 45.1 ms (two visits) | 28.0 ms |
+| embeddinggemma | 2048 | 34.0 ms | 31.7 ms |
+
+~12–16x slower, adding roughly **40ms to every search**. Against a median recall
+of 187ms that is about 20% slower — noticeable, not disqualifying.
+
+The 2048 window measuring *faster* than 512 is counterintuitive but reproduced
+across repeated visits in both orders, so it is a real effect of the attention
+path and not warm-up drift. An earlier sweep that reported query latency falling
+monotonically with window size *was* a warm-up artifact and was discarded.
+
+### What actually blocks this
+
+**Not query latency** (+40ms, acceptable) and **not the one-time re-embed**
+(6.6 min at 512). Two things do:
+
+1. **HF gating.** epimneme loads the embedder in-process
+   (`manager.py:153`), so production needs the gated HF weights, not Ollama's
+   copy. Requires requesting access and shipping an `HF_TOKEN`.
+2. **Benchmark cost.** LME-S ingests ~250 docs per question. At 3.8 texts/s that
+   is 66s per question — **~9 hours per 500-question run against today's 35
+   minutes**. The ablation tooling built this month becomes ~15x more expensive
+   to run on CPU.
+
+### Recommendation
+
+Both blockers have the same fix: **move embedding out-of-process to Ollama** (or
+any GPU host). That sidesteps HF gating entirely — Ollama serves its own
+converted weights with no auth — and restores throughput, since the same model
+on Metal ran at 29 texts/s against this CPU's 1.6. The cost is a network hop on
+every recall and a new runtime dependency for the server.
+
+If embedding stays in-process, EmbeddingGemma is still *deployable* at
+`max_seq=512` — 22x slower ingest is tolerable at production memory volumes
+(a session writing 20 memories: 0.24s → 5.3s) — but CPU benchmarking becomes
+impractical and the HF token becomes a deploy requirement.
