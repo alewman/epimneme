@@ -1999,3 +1999,65 @@ pipeline variants any more. Use turn EC@10 and turn hit@1, on true gold.
   semantic channel. Whether that reaches the answer is the single most valuable
   open measurement.
 - e2e with the prune list applied.
+
+## September 2026 — EmbeddingGemma in the full pipeline: the gain does not survive
+
+The semantic-channel screen measured EmbeddingGemma at **+0.097 turn EC@10** and
+**+0.100 turn hit@1** over MiniLM (p<0.001). Run through the actual retrieval
+pipeline on the same 500 questions, that gain is **gone**.
+
+### Setup
+
+An isolated stack (`bench-db` + `bench-engram`, port 8002) running
+`embeddinggemma` at 768 dims via the Ollama backend with both official prefixes,
+reflection disabled. Production was untouched — its pgvector column is
+table-wide and fixed at 384, so migrating it for a benchmark would have altered
+all 1,506 live memories. First real workload through the pluggable embedding
+backend.
+
+### Paired against MiniLM, 479 questions with true `has_answer` gold
+
+| metric | MiniLM | Gemma | Δ | better | worse | p |
+|---|---|---|---|---|---|---|
+| session R@1 | 0.860 | 0.873 | +0.013 | 10 | 4 | 0.180 |
+| session R@5 | 0.969 | 0.975 | +0.006 | 3 | 0 | 0.250 |
+| turn hit@1 | 0.585 | 0.597 | +0.013 | 10 | 4 | 0.180 |
+| turn hit@10 | 0.952 | 0.950 | −0.002 | 2 | 3 | 1.000 |
+| **turn EC@10** | **0.871** | **0.874** | **+0.003** | 14 | 9 | 0.405 |
+
+Nothing reaches significance. **+0.097 EC@10 at the semantic channel becomes
++0.003 in the pipeline** — a 97% reduction.
+
+Not a plumbing failure: the rankings genuinely move. Only **3.6%** of questions
+have an identical top-10 ordering, mean Jaccard is **0.749**, and 1.6 of every 10
+documents differ. The embedder reshuffles constantly and changes the answer
+almost never — the same signature as the keyword-weight null.
+
+### By type, nothing survives either
+
+| type | n | Δ EC@10 | Δ hit@1 | Δ sess R@5 | p (EC) |
+|---|---|---|---|---|---|
+| multi-session | 125 | +0.012 | +0.008 | +0.000 | 0.146 |
+| temporal-reasoning | 132 | −0.000 | +0.015 | +0.023 | 1.000 |
+| single-session-preference | 30 | +0.000 | +0.033 | +0.000 | 1.000 |
+| single-session-user | 64 | +0.000 | +0.031 | +0.000 | 1.000 |
+| knowledge-update | 72 | +0.000 | +0.000 | +0.000 | 1.000 |
+| single-session-assistant | 56 | +0.000 | +0.000 | +0.000 | 1.000 |
+
+### The third instance of one pattern
+
+1. Full-text channel: **+21.4pp R@1** offline at the fusion stage → **zero** live.
+2. Channel leave-one-out: offline wrong about **all six** channels.
+3. EmbeddingGemma: **+0.097 EC@10** semantic-only → **+0.003** in the pipeline.
+
+The post-fusion stack — measured at +11.2pp EC@10 over the raw MiniLM channel —
+does not merely add value, it *absorbs variation in its input*. It repairs a
+weak semantic channel and it flattens a strong one. That is robustness, and it
+is also why **no measurement taken upstream of fusion predicts pipeline
+behaviour**, at any magnitude tested so far.
+
+The practical consequence for the embedder question: a better embedder is worth
+little here **while this stack sits on top of it**. The interesting experiment is
+no longer "which embedder" but "does a strong embedder need this much
+machinery" — a Gemma-backed pipeline with the stack progressively removed, which
+the existing `skip` switches can now measure directly.
