@@ -404,6 +404,7 @@ async def process_question(
 async def run_benchmark(
     data_file: str,
     engram_url: str = "http://localhost:8000",
+    token: str = "",
     granularity: str = "session",
     limit: int = 0,
     skip: int = 0,
@@ -428,7 +429,10 @@ async def run_benchmark(
         print(f"  Skipping first {skip} questions (resume mode)")
         data = data[skip:]
 
-    client = EngramClient(base_url=engram_url)
+    # Without a token every request 401s and the run reports "stored 0/N" with
+    # near-random recall rather than failing — a silent, very convincing wrong
+    # answer. The harness predates the auth requirement.
+    client = EngramClient(base_url=engram_url, token=token)
 
     # --skip-ingest: fetch existing projects once, disable cleanup to protect staged data
     existing_projects: set[str] | None = None
@@ -603,6 +607,9 @@ if __name__ == "__main__":
         "--skip", type=int, default=0, help="Skip first N questions (resume mode)"
     )
     parser.add_argument("--out", default=None, help="Output JSONL file path")
+    parser.add_argument("--token", default="",
+                        help="Bearer token (or set EPIMNEME_TOKEN). Required when the "
+                             "target server enforces auth.")
     parser.add_argument(
         "--engram-url",
         default="http://localhost:8000",
@@ -658,6 +665,7 @@ if __name__ == "__main__":
         run_benchmark(
             data_file=args.data_file,
             engram_url=args.engram_url,
+            token=args.token or os.environ.get("EPIMNEME_TOKEN", ""),
             granularity=args.granularity,
             limit=args.limit,
             skip=args.skip,
