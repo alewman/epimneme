@@ -108,6 +108,7 @@ class MemoryManager:
         self.config = config
         self.store = store
         self._embedder = None
+        self._backend = None
         self._embeddings_enabled = config.embeddings_enabled
         # Limit concurrent model.encode() calls — prevents timeout with many workers
         self._embed_semaphore: asyncio.Semaphore = asyncio.Semaphore(2)
@@ -125,6 +126,14 @@ class MemoryManager:
         store = PostgresStore(dsn=config.pg_dsn, embedding_dim=config.embedding_dim, pool_timeout=config.pg_pool_timeout, hnsw_ef_search=config.hnsw_ef_search)
         await store.open()
         mgr = cls(config, store)
+        if mgr._embeddings_enabled:
+            # Build the backend now rather than on the first request. A
+            # dimension mismatch against the fixed-width pgvector column would
+            # otherwise surface as a failed insert per write, long after the
+            # misconfiguration was deployed.
+            backend = await asyncio.to_thread(lambda: mgr.embedding_backend)
+            logger.info("Embedding backend: %s (%s, %d dims)",
+                        backend.name, config.embedding_model, config.embedding_dim)
         logger.info(
             f"MemoryManager ready — embeddings={'on' if mgr._embeddings_enabled else 'off'}"
         )
@@ -145,23 +154,37 @@ class MemoryManager:
     # ── Embedding (runs in thread pool) ──────────────────────────────────
 
     @property
+    def embedding_backend(self):
+        """Lazy-build the configured embedding backend (in-process or remote)."""
+        if getattr(self, "_backend", None) is None:
+            from epimneme.embedding import build_backend
+            self._backend = build_backend(self.config)
+        return self._backend
+
+    @property
     def embedder(self):
-        """Lazy-load sentence-transformers model on first use."""
-        if self._embedder is None and self._embeddings_enabled:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self._embedder = SentenceTransformer(self.config.embedding_model)
-                logger.info(f"Loaded embedding model: {self.config.embedding_model}")
-            except Exception as e:
-                logger.warning(f"Failed to load embeddings: {e}")
-                self._embeddings_enabled = False
-        return self._embedder
+        """The underlying SentenceTransformer, or None for a remote backend.
+
+        Kept because MaxSim needs token-level embeddings, which only the
+        in-process backend can produce.
+        """
+        if not self._embeddings_enabled:
+            return None
+        return self.embedding_backend.st_model
 
     @property
     def _maxsim(self):
         """Lazy-load MaxSim reranker (reuses the same bi-encoder model)."""
         if not hasattr(self, "_maxsim_reranker"):
             self._maxsim_reranker = None
+        if (self._maxsim_reranker is None
+                and self.config.maxsim_enabled
+                and self.embedder is None
+                and self.embedding_backend.name != "sentence-transformers"):
+            logger.warning(
+                "MaxSim is enabled but the %s embedding backend cannot produce "
+                "token-level embeddings; MaxSim stays off.",
+                self.embedding_backend.name)
         if self._maxsim_reranker is None and self.embedder is not None:
             try:
                 from epimneme.maxsim import MaxSimReranker
@@ -175,20 +198,23 @@ class MemoryManager:
         return self._maxsim_reranker
 
     def _embed_sync(self, text: str) -> Optional[list[float]]:
-        """Synchronous embedding — called inside thread pool."""
-        if not self._embeddings_enabled or self.embedder is None:
+        """Synchronous DOCUMENT embedding — called inside thread pool."""
+        if not self._embeddings_enabled:
             return None
-        try:
-            vec = self.embedder.encode(text, normalize_embeddings=True)
-            return vec.tolist()
-        except Exception as e:
-            logger.warning(f"Embedding failed: {e}")
-            return None
+        vecs = self.embedding_backend.encode([text], is_query=False)
+        return vecs[0] if vecs else None
 
     def _embed_query_sync(self, text: str) -> Optional[list[float]]:
-        """Synchronous query embedding — prepends query_prefix if configured."""
-        prefix = self.config.embedding_query_prefix
-        return self._embed_sync(f"{prefix}{text}" if prefix else text)
+        """Synchronous QUERY embedding.
+
+        Query and document prefixes are applied by the backend, not here —
+        instruction-tuned models use different prefixes for each side, and
+        applying one in two places would double it.
+        """
+        if not self._embeddings_enabled:
+            return None
+        vecs = self.embedding_backend.encode([text], is_query=True)
+        return vecs[0] if vecs else None
 
     async def _embed(self, text: str) -> Optional[list[float]]:
         """Generate embedding in a worker thread (non-blocking)."""
@@ -204,15 +230,15 @@ class MemoryManager:
 
     def _embed_batch_sync(self, texts: list[str]) -> list[Optional[list[float]]]:
         """Encode a batch of texts in a single model.encode() call (much faster than N individual calls)."""
-        if not self._embeddings_enabled or self.embedder is None:
+        if not self._embeddings_enabled:
             return [None] * len(texts)
-        try:
-            import numpy as np
-            vecs = self.embedder.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
-            return [v.tolist() for v in vecs]
-        except Exception:
-            logger.exception("Batch embedding failed")
+        vecs = self.embedding_backend.encode(texts, is_query=False)
+        if vecs is None or len(vecs) != len(texts):
+            if vecs is not None:
+                logger.error("Batch embedding returned %d vectors for %d texts",
+                             len(vecs), len(texts))
             return [None] * len(texts)
+        return vecs
 
     async def _embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
         """Non-blocking batch embedding — encodes all texts in one GPU/CPU kernel call."""

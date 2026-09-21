@@ -26,6 +26,18 @@ class EngramConfig:
     embeddings_enabled: bool = True
     # Optional instruction prefix prepended to *query* embeddings only (e.g. BGE models)
     embedding_query_prefix: str = ""
+    # Instruction prefix for *document* embeddings. Some instruction-tuned models
+    # (EmbeddingGemma: "title: none | text: ") prefix documents as well as queries;
+    # measured at +0.036 evidence-completeness for Gemma, so it is not optional
+    # when using such a model.
+    embedding_doc_prefix: str = ""
+    # "sentence-transformers" (in-process) or "ollama" (remote). Ollama removes the
+    # HuggingFace gating problem and lets a GPU host absorb the cost of a larger
+    # model; see epimneme/embedding.py.
+    embedding_backend: str = "sentence-transformers"
+    ollama_url: str = "http://localhost:11434"
+    ollama_timeout: float = 60.0
+    ollama_batch_size: int = 64
 
     # Memory decay (power-law retrievability)
     decay_base_stability: float = 1.0  # base half-life in days
@@ -226,6 +238,11 @@ def default_config() -> EngramConfig:
         chunk_overlap=int(os.environ.get("EPIMNEME_CHUNK_OVERLAP", "100")),
         hnsw_ef_search=int(os.environ.get("EPIMNEME_HNSW_EF_SEARCH", "100")),
         embedding_query_prefix=os.environ.get("EPIMNEME_EMBEDDING_QUERY_PREFIX", ""),
+        embedding_doc_prefix=os.environ.get("EPIMNEME_EMBEDDING_DOC_PREFIX", ""),
+        embedding_backend=os.environ.get("EPIMNEME_EMBEDDING_BACKEND", "sentence-transformers"),
+        ollama_url=os.environ.get("EPIMNEME_OLLAMA_URL", "http://localhost:11434"),
+        ollama_timeout=float(os.environ.get("EPIMNEME_OLLAMA_TIMEOUT", "60")),
+        ollama_batch_size=int(os.environ.get("EPIMNEME_OLLAMA_BATCH_SIZE", "64")),
         # Phase A: additional ranked-list signals
         bm25_signal_enabled=os.environ.get("EPIMNEME_BM25_SIGNAL_ENABLED", "1") == "1",
         bm25_signal_weight=float(os.environ.get("EPIMNEME_BM25_SIGNAL_WEIGHT", "0.5")),

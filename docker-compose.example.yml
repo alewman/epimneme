@@ -36,7 +36,24 @@ services:
       EPIMNEME_PG_USER: engram
       EPIMNEME_PG_PASSWORD: ${EPIMNEME_PG_PASSWORD}
       EPIMNEME_PG_DATABASE: engram
-      EPIMNEME_EMBEDDING_MODEL: all-MiniLM-L6-v2
+      # Embedding backend. The defaults below are the in-process behaviour.
+      # Set EPIMNEME_EMBEDDING_BACKEND=ollama to embed on a remote Ollama host —
+      # this avoids HuggingFace-gated weights (Ollama serves its own) and lets a
+      # GPU host absorb the cost of a larger model.
+      # Changing the MODEL also means changing EPIMNEME_EMBEDDING_DIM, migrating
+      # the pgvector column and re-embedding (`manage.py reembed`). The server
+      # refuses to start on a dimension mismatch rather than failing every write.
+      # Instruction-tuned models need their prefixes set, or they score well
+      # below their potential (EmbeddingGemma: query "task: search result | query: ",
+      # doc "title: none | text: ").
+      EPIMNEME_EMBEDDING_BACKEND: ${EPIMNEME_EMBEDDING_BACKEND:-sentence-transformers}
+      EPIMNEME_EMBEDDING_MODEL: ${EPIMNEME_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EPIMNEME_EMBEDDING_DIM: ${EPIMNEME_EMBEDDING_DIM:-384}
+      EPIMNEME_EMBEDDING_QUERY_PREFIX: ${EPIMNEME_EMBEDDING_QUERY_PREFIX:-}
+      EPIMNEME_EMBEDDING_DOC_PREFIX: ${EPIMNEME_EMBEDDING_DOC_PREFIX:-}
+      EPIMNEME_OLLAMA_URL: ${EPIMNEME_OLLAMA_URL:-http://localhost:11434}
+      EPIMNEME_OLLAMA_TIMEOUT: ${EPIMNEME_OLLAMA_TIMEOUT:-60}
+      EPIMNEME_OLLAMA_BATCH_SIZE: ${EPIMNEME_OLLAMA_BATCH_SIZE:-64}
     # Expose only on loopback by default. Remove or change to 8000:8000 to
     # bind on all interfaces (and put a reverse proxy in front of it!).
     ports:

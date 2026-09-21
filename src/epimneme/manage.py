@@ -150,11 +150,20 @@ async def cmd_re_embed(args: argparse.Namespace) -> None:
     batch_size = args.batch_size or 100
 
     try:
-        # Load the embedding model
-        print(f"Loading embedding model: {config.embedding_model}")
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer(config.embedding_model)
-        new_dim = model.get_sentence_embedding_dimension()
+        # Use the configured backend, so re-embedding a remote model works and
+        # (crucially) applies the same document prefix the server will use at
+        # ingest. Re-embedding through a different path than the server writes
+        # with would silently produce a corpus the server cannot match against.
+        print(f"Embedding backend: {config.embedding_backend} "
+              f"({config.embedding_model})")
+        from epimneme.embedding import build_backend
+        backend = build_backend(config)
+        probe = backend.encode(["dimension probe"], is_query=False)
+        if not probe:
+            print("  ✗ embedding backend is unavailable — aborting rather than "
+                  "nulling embeddings it cannot replace.")
+            return
+        new_dim = len(probe[0])
         print(f"Model dimension: {new_dim} (configured: {config.embedding_dim})")
 
         if new_dim != config.embedding_dim:
@@ -187,10 +196,14 @@ async def cmd_re_embed(args: argparse.Namespace) -> None:
         for i in range(0, total, batch_size):
             batch = memories[i:i + batch_size]
             texts = [m.content for m in batch]
-            embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+            embeddings = backend.encode(texts, is_query=False)
+            if embeddings is None or len(embeddings) != len(batch):
+                print(f"  ✗ embedding failed at batch {i // batch_size + 1}; "
+                      f"{updated}/{total} done. Re-run to resume.")
+                return
 
             for m, emb in zip(batch, embeddings):
-                await store.update_embedding(m.id, emb.tolist())
+                await store.update_embedding(m.id, emb)
                 updated += 1
 
             pct = (updated / total) * 100
