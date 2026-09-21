@@ -1902,3 +1902,100 @@ If embedding stays in-process, EmbeddingGemma is still *deployable* at
 `max_seq=512` — 22x slower ingest is tolerable at production memory volumes
 (a session writing 20 memories: 0.24s → 5.3s) — but CPU benchmarking becomes
 impractical and the HF token becomes a deploy requirement.
+
+## September 2026 — WHERE WE STAND (read this first)
+
+This document spans months and several corrections. This section is the current
+state; where anything above disagrees with it, this section wins.
+
+### Still valid, never in doubt
+
+**Session-level retrieval.** The session gold (`answer_session_ids`) was always
+correct, so every session metric in this document is sound.
+
+| | value |
+|---|---|
+| R@1 | 0.858 |
+| R@5 | 0.968 |
+| R@10 | 0.982 |
+
+**End-to-end answer accuracy: 0.732** (500 questions, judged, qwen3.8:27b,
+2026-09-13). Judged answer correctness never depended on the turn gold. The
+pipeline has not changed since that run — the only commits touching `src/` are
+additive ablation switches and the pluggable embedding backend, all defaulting
+to prior behaviour — so 0.732 stands, though it has not been re-measured.
+
+| type | n | e2e |
+|---|---|---|
+| single-session-assistant | 56 | 0.982 |
+| single-session-user | 70 | 0.943 |
+| knowledge-update | 78 | 0.821 |
+| multi-session | 133 | 0.602 |
+| temporal-reasoning | 133 | 0.632 |
+| single-session-preference | 30 | 0.567 |
+| **overall** | 500 | **0.732** |
+
+### Invalidated
+
+- **Every turn-level number before 2026-09-16.** The harnesses defined turn gold
+  as "all turns of a gold session", inflating it ~6x. Those numbers were session
+  recall under a slot budget, not evidence measurement. `recall_all@10 = 0.094`
+  and `EC@10 = 0.527` were never findings.
+- **The offline fusion-stage channel ablation.** Wrong about all six channels
+  when checked live (semantic −0.142 predicted vs −0.002 measured; full-text
+  +0.032 vs +0.000). Replay that stops at fusion does not predict the pipeline.
+- **The EC-based half of the prune list**, and the **session-expansion
+  recommendation** (EC 0.527 → 0.933), which was an artifact of the inflated gold.
+
+### Current, on true `has_answer` gold (479 questions with flagged evidence)
+
+| | value |
+|---|---|
+| turn hit@1 | 0.585 |
+| turn hit@10 | **0.952** |
+| turn EC@10 | **0.871** |
+| turn EC@50 | 0.965 |
+| turn recall_all@10 | 0.789 |
+
+**Retrieval is in far better shape than this document long implied.** The
+evidence is retrieved 95% of the time and 87% of it is present in the top 10.
+
+### Where the remaining loss actually is
+
+| type | n | sess R@5 | turn hit@1 | turn hit@10 | turn EC@10 | **e2e** |
+|---|---|---|---|---|---|---|
+| knowledge-update | 72 | 1.000 | 0.639 | 1.000 | 0.961 | 0.821 |
+| single-session-assistant | 56 | 1.000 | 0.750 | 0.982 | 0.982 | 0.982 |
+| single-session-user | 64 | 1.000 | 0.734 | 0.984 | 0.984 | 0.943 |
+| temporal-reasoning | 132 | 0.955 | 0.561 | 0.962 | 0.881 | **0.632** |
+| multi-session | 125 | 0.976 | 0.504 | 0.936 | 0.746 | **0.602** |
+| single-session-preference | 30 | 0.800 | 0.267 | 0.733 | 0.678 | **0.567** |
+
+Three distinct problems, not one:
+
+1. **temporal-reasoning — reader-bound.** Retrieval is strong (hit@10 0.962,
+   EC 0.881) and e2e is 0.632. The evidence is in front of the reader and the
+   answer is still wrong. No retrieval change will fix this.
+2. **single-session-preference — retrieval-bound.** hit@1 0.267, hit@10 0.733,
+   session R@5 0.800 — the only type where retrieval genuinely fails. Smallest
+   bucket (n=30), so it moves the overall number least.
+3. **multi-session — both.** EC@10 0.746 is the second-worst, and e2e 0.602
+   trails it.
+
+`knowledge-update` deserves note: retrieval is effectively perfect (hit@10 1.000,
+EC 0.961) yet e2e is 0.821, short of its 0.93 gate. That gate was always
+reader-bound, as the Phase 3 near-miss analysis found by a different route.
+
+### What the benchmark can no longer tell us
+
+Session R@5 is **saturated at 0.968** — in the 24-config live ablation, 17 of 22
+configurations returned identical values. It cannot discriminate between
+pipeline variants any more. Use turn EC@10 and turn hit@1, on true gold.
+
+### Not measured
+
+- e2e since 2026-09-13 (pipeline unchanged, but unverified).
+- e2e with **EmbeddingGemma**, which is +0.097 EC@10 and +0.100 hit@1 on the
+  semantic channel. Whether that reaches the answer is the single most valuable
+  open measurement.
+- e2e with the prune list applied.
