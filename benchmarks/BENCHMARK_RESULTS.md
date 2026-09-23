@@ -2061,3 +2061,71 @@ little here **while this stack sits on top of it**. The interesting experiment i
 no longer "which embedder" but "does a strong embedder need this much
 machinery" — a Gemma-backed pipeline with the stack progressively removed, which
 the existing `skip` switches can now measure directly.
+
+## September 2026 — Ablation on a Gemma-backed pipeline: what a better embedder makes redundant
+
+500 questions x 24 configs against the isolated `embeddinggemma`/768 stack.
+0 failures, `baseline == baseline_check` on all 500. Scored on **true
+`has_answer` gold** — `ablate_stages.py` still used the inflated definition, and
+its own `t_ec@10` column reported that removing `keyword_rerank` *improved*
+evidence by +3.5pp. On true gold that is −0.4pp and not significant. The harness
+is fixed; treat any `t_ec@10` printed by a run before this as session recall.
+
+### Side by side, paired, true gold (479 questions)
+
+Baselines — MiniLM: EC@10 0.871, hit@1 0.585. Gemma: EC@10 0.874, hit@1 0.597.
+
+| removed | MiniLM ΔEC | p | MiniLM Δhit@1 | p | Gemma ΔEC | p | Gemma Δhit@1 | p |
+|---|---|---|---|---|---|---|---|---|
+| **keyword_rerank** | **−0.066** | **<0.001** | **−0.121** | **<0.001** | −0.004 | 0.899 | **−0.086** | **<0.001** |
+| semantic | −0.008 | 0.012 | +0.000 | 1.000 | −0.007 | 0.118 | −0.010 | 0.180 |
+| entity | −0.003 | 0.125 | −0.004 | 0.625 | −0.003 | 0.500 | −0.002 | 1.000 |
+| bm25 | −0.005 | 0.549 | +0.002 | 1.000 | −0.001 | 1.000 | +0.002 | 1.000 |
+| turn_pair_boost | −0.003 | 0.500 | +0.000 | 1.000 | −0.001 | 1.000 | +0.004 | 0.500 |
+| decay | −0.000 | 1.000 | −0.004 | 0.500 | −0.001 | 1.000 | −0.004 | 0.625 |
+| mmr | −0.002 | 1.000 | +0.000 | 1.000 | +0.001 | 1.000 | +0.000 | 1.000 |
+| fulltext | +0.001 | 0.754 | −0.004 | 0.688 | +0.004 | 0.180 | +0.002 | 1.000 |
+| ALL_INERT | −0.010 | 0.125 | +0.002 | 1.000 | −0.003 | 1.000 | +0.002 | 1.000 |
+
+### `keyword_rerank` was doing two jobs; the embedder retires one of them
+
+On MiniLM, removing it costs **−0.066 EC@10** and **−0.121 hit@1**, both
+p<0.001. On Gemma the evidence-completeness cost **disappears** (−0.004,
+p=0.899) while the top-1 cost **persists** (−0.086, p<0.001).
+
+So the lexical rerank was doing two separable things: pulling missing evidence
+into the top 10, and getting the single best document to rank 1. A stronger
+semantic channel makes the first redundant — it already retrieves that evidence
+— and does not touch the second. This is the clearest mechanism yet for how the
+post-fusion stack "absorbs" a better embedder: the stage that repairs a weak
+channel simply has less to repair.
+
+### Everything else is flat on both embedders
+
+`tiebreak`, `proper_noun`, `temporal_boost`, `temporal_partition`,
+`date_proximity`, `maxsim`, `prf`, `temporal_filter`, `preference`, `recency`,
+`vague_entities` change nothing under either embedder. **The prune list is
+embedder-independent**, which makes it a safe simplification regardless of what
+the swap decision turns out to be.
+
+### No configuration wins
+
+The best Gemma configuration measured is `− fulltext`: EC@10 **0.878**, hit@1
+0.599, against MiniLM's full pipeline at 0.871 / 0.585. That is +0.007 EC and
++0.014 hit@1 — neither significant, and both far below the +0.097 the semantic
+screen promised.
+
+**LME-S retrieval is at a ceiling of roughly EC@10 0.87–0.88 and turn hit@10
+0.95, and neither the embedder nor the pipeline shape moves it.** Six channels,
+fourteen post-fusion stages and a 27x larger embedder all land within noise of
+each other. The remaining loss in the product metric — e2e 0.732 — is therefore
+reader-side, which the per-type table in the current-state section already
+showed by a different route (temporal-reasoning: retrieval hit@10 0.962,
+e2e 0.632).
+
+### Consequence
+
+Stop tuning retrieval on this benchmark. It cannot distinguish the options any
+more. Two things remain worth doing: apply the prune list as a simplification
+with no measured cost, and move the work to the reader, which is where every
+remaining point of e2e lives.

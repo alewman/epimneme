@@ -49,6 +49,7 @@ from ablate_channels import exact_mcnemar, mean, score_ranking  # noqa: E402
 from epimneme_client import EngramClient  # noqa: E402
 from longmemeval_bench import (  # noqa: E402
     build_corpus,
+    has_answer_gold,
     cleanup_project,
     ingest_corpus,
     load_data,
@@ -159,9 +160,13 @@ async def ablate_one(
         answer_sids = set(entry["answer_session_ids"]) if isinstance(
             entry["answer_session_ids"], list
         ) else set(json.loads(str(entry["answer_session_ids"]).replace("'", '"')))
-        turn_correct = [
-            cid for cid in corpus_ids if session_id_from_corpus_id(cid) in answer_sids
-        ]
+        # Real evidence turns. The old definition here ("every turn of a gold
+        # session") inflates the gold ~6x and turns t_ec@10 into session recall
+        # wearing a different name — it reported that removing keyword_rerank
+        # IMPROVED evidence by +3.5pp when on true gold it is -0.4pp and not
+        # significant. Questions with no flagged turn are excluded from turn
+        # averages by the scorer.
+        turn_correct = sorted(has_answer_gold(entry))
 
         return {
             "question_id": qid,
