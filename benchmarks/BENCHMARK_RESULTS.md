@@ -2393,3 +2393,58 @@ prompt reordering.
 
 They are unrelated bugs in two different prompts, which is why the aggregate
 "the reader is weak" framing was never actionable.
+
+## September 2026 — multi-session: raising the counting token cap is worth +12pp
+
+The diagnosis said the counting prompt puts the answer on the last line and the
+80-token cap truncates it away. The minimal test of that is to remove the
+truncation and change nothing else.
+
+Two arms, 133 multi-session questions, same retrieval pool, same model, same
+assembly flags. **Generation cap for multi-session is the only variable.**
+
+### Result (judged)
+
+| arm | score | |
+|---|---|---|
+| cap 80 (control) | **0.602** (80/133) | reproduces the stored 2026-09-13 baseline exactly |
+| **cap 256** | **0.722** (96/133) | **+0.120**, fixes 17, breaks 1, **p=0.00014** |
+
+The first significant *positive* result of the whole programme, and the largest
+single effect measured on this benchmark by any change.
+
+### The mechanism is confirmed, not just the outcome
+
+| | n | cap 80 correct | cap 256 correct |
+|---|---|---|---|
+| truncated under cap 80 | 44 | 17 | **29** (+12) |
+| already complete under cap 80 | 89 | 63 | 67 (+4) |
+
+Three quarters of the gain comes from questions that were previously cut off —
+exactly the population the diagnosis identified. The answers were being computed
+all along and thrown away before they could be emitted.
+
+### Residual headroom
+
+Truncation fell from 44/133 to **25/133**, so a quarter of multi-session answers
+still run past even 256 tokens (max observed: 194 words). Median length barely
+moved (32 → 33 words), so the cap is not making the reader verbose in general —
+it is only letting the already-long answers finish. A further raise, or the
+prompt reorder that was deliberately held back, should be worth something more.
+
+### What this is and is not
+
+This is a **consumer-side** finding. The reader is the benchmark's, not
+epimneme's, so nothing in the server changes. But it generalises to any agent
+that asks a model to enumerate-then-total over an assembled context under a
+token budget: **the answer must not be the last thing generated.** That belongs
+in the guidance epimneme ships to its consumers.
+
+### Overall e2e impact
+
+multi-session is 133 of 500 questions, so +0.120 there is **+3.2pp overall**:
+e2e **0.732 → ~0.764** from a single integer. With temporal v2's +5.3pp
+(+1.4pp overall, not yet shipped pending its wording fix), the two reader
+diagnoses together are worth roughly **+4.6pp of end-to-end accuracy** —
+against a retrieval programme, including an embedder swap, that yielded nothing
+measurable.

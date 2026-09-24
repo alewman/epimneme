@@ -490,6 +490,7 @@ async def run(
     use_judge: bool,
     use_temporal: bool,
     temporal_v2: bool,
+    counting_max_tokens: int,
     use_hyde: bool,
     engram_project: str,
     out_path: Path,
@@ -605,7 +606,15 @@ async def run(
 
             async with semaphore:
                 t0 = time.time()
-                generated = await _chat(session, prompt, max_tokens=80,
+                # The counting prompt (multi-session) asks for an enumerated list
+                # and puts the final number on the LAST line, so an 80-token cap
+                # truncates away the answer itself: measured 44/133 multi-session
+                # answers cut mid-sentence, hit rate 0.39 against 0.71 for complete
+                # ones, and zero truncation in any other type. Give that path room
+                # rather than reordering the prompt, which would also remove the
+                # enumerate-then-count deliberation.
+                gen_cap = counting_max_tokens if qtype == "multi-session" else 80
+                generated = await _chat(session, prompt, max_tokens=gen_cap,
                                         ollama_url=ollama_url, model=model)
                 gen_time = time.time() - t0
 
@@ -787,6 +796,11 @@ def main() -> None:
         help="Prepend the recency note (latest-dated value is current) to the assembled context",
     )
     ap.add_argument(
+        "--counting-max-tokens", type=int, default=80,
+        help="Generation cap for multi-session (counting) questions. The counting "
+             "prompt puts the answer on the LAST line, so the default 80 truncates it "
+             "away on a third of those questions. 256 gives the list room to finish.")
+    ap.add_argument(
         "--temporal-v2", action="store_true",
         help="Use the v2 temporal answer prompt: tells the reader the answer is DERIVED "
              "from dates and to refuse only when the underlying events are missing. v1's "
@@ -868,6 +882,7 @@ def main() -> None:
             use_judge=args.judge,
             use_temporal=args.temporal,
             temporal_v2=args.temporal_v2,
+            counting_max_tokens=args.counting_max_tokens,
             use_hyde=args.hyde,
             engram_project=args.engram_project,
             out_path=out_path,
