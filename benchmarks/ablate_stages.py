@@ -109,6 +109,15 @@ async def preflight(client: EngramClient, project_name: str) -> None:
         skip="__nosuchstage__", update_access=False,
     )
     detail = str(result.get("detail", ""))
+    # Distinguish an auth failure from a stale build. Both leave `skip`
+    # unhonoured, but the fix is completely different and the wrong message
+    # sends you rebuilding a container that was fine.
+    if "API key" in detail or "Authentication" in detail or "not have access" in detail:
+        raise FatalAblationError(
+            f"the server rejected the token before `skip` was ever evaluated: {detail}. "
+            f"Check EPIMNEME_TOKEN — keys expire (`manage.py list-keys` shows expires_at) "
+            f"and must be scoped to the --project namespace."
+        )
     if "unknown recall stage" not in detail:
         raise FatalAblationError(
             "server did not reject an invalid --skip stage name, so it is "
@@ -281,6 +290,11 @@ async def main() -> int:
     ap.add_argument("--no-cleanup", action="store_true")
     ap.add_argument("--no-combos", action="store_true",
                     help="Leave-one-out only; skip the combination probes")
+    ap.add_argument("--combo", default="",
+                    help="Also score one explicit combination, comma-separated. Use this "
+                         "to measure the exact configuration you intend to ship: a "
+                         "leave-one-out proves each stage is individually free, never "
+                         "that removing several together is.")
     ap.add_argument("--score", default="",
                     help="Score an existing run file and exit (no server needed)")
     ap.add_argument("--metric", default="s_any@5")
@@ -303,6 +317,15 @@ async def main() -> int:
               f"valid: {sorted(valid)}", file=sys.stderr)
         return 2
     configs = build_configs(stages, combos=not args.no_combos)
+    if args.combo:
+        combo = [x.strip() for x in args.combo.split(",") if x.strip()]
+        unknown_c = sorted(set(combo) - valid)
+        if unknown_c:
+            print(f"ERROR: unknown stage(s) in --combo: {unknown_c}", file=sys.stderr)
+            return 2
+        # insert before the trailing baseline_check so the two baselines still
+        # bracket every scored configuration
+        configs.insert(len(configs) - 1, ("-COMBO:" + "+".join(combo), combo))
 
     entries = load_data(args.data_file)
     if args.limit:

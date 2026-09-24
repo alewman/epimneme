@@ -2129,3 +2129,60 @@ Stop tuning retrieval on this benchmark. It cannot distinguish the options any
 more. Two things remain worth doing: apply the prune list as a simplification
 with no measured cost, and move the work to the reader, which is where every
 remaining point of e2e lives.
+
+## September 2026 — The prune list does not survive verification
+
+Five stages each measured individually free under both embedders:
+`tiebreak`, `proper_noun`, `temporal_boost`, `temporal_partition`,
+`date_proximity`. Removing them **together** is not free.
+
+500 questions, production-equivalent MiniLM pipeline, true gold, 0 failures,
+`baseline == baseline_check` on all 500. The combination was measured directly
+rather than inferred from the five leave-one-outs (`ablate_stages.py --combo`).
+
+### Individually (paired, 479 questions with gold)
+
+| removed | ΔEC@10 | better/worse | Δhit@10 | better/worse |
+|---|---|---|---|---|
+| tiebreak | +0.000 | 0/0 | +0.000 | 0/0 |
+| temporal_boost | +0.000 | 0/0 | +0.000 | 0/0 |
+| date_proximity | +0.001 | 1/0 | +0.000 | 0/0 |
+| proper_noun | −0.002 | 1/2 | −0.002 | 0/1 |
+| temporal_partition | −0.004 | 0/2 | −0.004 | 0/2 |
+
+### All five together
+
+| metric | baseline | pruned | Δ | better | worse | p |
+|---|---|---|---|---|---|---|
+| EC@10 | 0.871 | 0.859 | −0.011 | 2 | 7 | 0.180 |
+| **turn hit@10** | **0.952** | **0.939** | **−0.013** | **0** | **6** | **0.031** |
+| turn hit@1 | 0.585 | 0.587 | +0.002 | 16 | 15 | 1.000 |
+| session R@1 | 0.860 | 0.868 | +0.008 | 12 | 8 | 0.503 |
+
+Removing all five **significantly degrades turn hit@10** — six questions lose
+their evidence entirely and none gain. This is the first significant negative
+result in the whole ablation programme, and it is invisible in every
+leave-one-out that preceded it.
+
+### Why a leave-one-out cannot find this
+
+Each stage is individually removable because the others cover for it — the same
+redundancy that made the whole post-fusion stack worth +11.2pp while no single
+component was worth more than a rounding error. Marginal contribution and joint
+contribution are different quantities, and for a redundant ensemble the sum of
+the marginals badly understates the whole.
+
+**A leave-one-out licenses removing one thing. It never licenses removing
+several.** Any future prune must measure the exact configuration to be shipped.
+
+### Decision
+
+**The prune list is rejected.** Seven signals out of the pipeline is not worth
+−1.3pp of turn hit@10 on the only metric that still discriminates, in exchange
+for a latency saving too small to measure.
+
+A narrower subset may still be free — `tiebreak`, `temporal_boost` and
+`date_proximity` have literally zero discordant questions on EC@10 and hit@10
+individually. But that combination would need its own 1.7h verification, and the
+payoff (three small stages) does not justify the cycle while the reader carries
+a ~30pp gap on the two largest question types.
