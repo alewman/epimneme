@@ -2263,3 +2263,65 @@ annotation, and refuse anyway. Fixing the gate addresses at most 6 questions
 (~1.2pp overall, ~4.5pp on temporal). The larger question — why a reader holding
 dated evidence and pre-computed deltas answers "Unknown" — is a prompt or model
 property, and is where the remaining temporal loss lives.
+
+## September 2026 — Temporal prompt v2: +5.3pp, not yet significant
+
+Two arms over the same 133 temporal-reasoning questions, same retrieval pool
+(`v700-baseline_20260904.fulltext`), same model (`qwen3.8:27b`), same assembly
+flags. **The prompt is the only variable.** Both arms were run fresh rather than
+comparing against the stored baseline, to remove eleven days of possible drift.
+
+### Result (judged)
+
+| arm | score | |
+|---|---|---|
+| v1 (current prompt) | **0.632** (84/133) | — |
+| v2 (compute-aware prompt) | **0.684** (91/133) | **+0.053**, fixes 14, breaks 7, p=0.189 |
+
+**The control reproduced the stored 2026-09-13 temporal baseline of 0.632
+exactly.** No drift, and the harness changes did not perturb v1 — which is what
+licenses reading the +5.3pp as the prompt's effect.
+
+"Unknown" answers fell from **38 to 19**.
+
+### Read the generations, not the summary line
+
+On exact match the same runs read v1 0.556 → v2 **0.421**, an apparent −13.5pp
+regression at p=0.0079. That was an artefact:
+
+| | |
+|---|---|
+| gold | `7 days. 8 days (including the last day) is also acceptable.` |
+| v1 | `7 days` → correct |
+| v2 | `7` → scored wrong |
+
+v2's instruction to answer with "a number or a short phrase" made the reader drop
+the unit, and substring matching rejected a correct answer. The stored baseline
+had always been judged; the exact-match comparison was never like-for-like.
+**Reported from the summary line alone, this would have been a false negative.**
+
+### What the refusals actually were
+
+Of v1's 38 refusals: **12 became correct**, 8 became wrong answers, 18 still
+refuse. So roughly a third of refusals were the prompt licensing a decline that
+the model could in fact have computed — and two thirds are genuine inability.
+That bounds how much of the temporal gap is prompt-shaped, and it is not all of
+it.
+
+### v2's remaining regressions are a wording flaw
+
+Of the 7 questions v2 broke, **5 wanted a name and got a number** — 3 ordering
+questions answered as `2, 3, 1` and 2 entity questions answered as `3`. "A number
+or a short phrase", combined with the emphasis on computing intervals, pushed the
+reader toward numeric answers on questions that are not numeric.
+
+A v3 that preserves units (`7 days`, not `7`) and instructs name-answers for
+ordering questions should recover most of those 7 while keeping the 14 fixes.
+That is the next single-variable test, against a control now validated at 0.632.
+
+### Status
+
+v2 is **not shipped**. +5.3pp at p=0.189 over 133 questions is encouraging and
+underpowered — 14 fixes against 7 breaks. The wording flaw is known and cheap to
+fix, so the right move is v3 rather than shipping a prompt with a diagnosed
+defect.

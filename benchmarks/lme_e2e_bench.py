@@ -73,6 +73,36 @@ Memory excerpts:
 Question: {question}
 Answer:"""
 
+# v2 of the temporal prompt. The v1 wording above ends with a blanket
+# "if the answer cannot be found in the excerpts, say exactly: Unknown", but a
+# temporal answer is DERIVED from the dates and is never literally present, so a
+# literal reader is licensed to refuse. Measured on the 2026-09-13 run: 32 of 49
+# temporal misses were refusals, 21 of them with the day-delta annotation already
+# in the context. v1 also forbids explaining reasoning, which suppresses the
+# intermediate steps arithmetic needs, and emits deltas only in days while 44% of
+# week-questions and 38% of month-questions refuse against 23% of day-questions.
+ANSWER_PROMPT_TEMPORAL_V2 = """\
+You are answering a question about a person's past conversations stored as memory excerpts.
+Each excerpt begins with a [Date: YYYY/MM/DD HH:MM — N days before the question] header.
+Today's date is: {question_date}
+
+The answer is usually NOT stated in the excerpts — you are expected to COMPUTE it from
+the dates. Find the relevant event(s), then calculate the interval the question asks for,
+converting days into weeks or months when that is the unit requested.
+
+Answer "Unknown" ONLY if the underlying events themselves are absent from the excerpts.
+Never answer "Unknown" merely because the number is not written down.
+
+Reply with ONLY the final answer — a number or a short phrase. No working, no
+explanation, no units of reasoning. (Generation is capped at 80 tokens, so any
+visible reasoning would truncate the answer away.)
+
+Memory excerpts:
+{context}
+
+Question: {question}
+Answer:"""
+
 HYDE_PROMPT = """\
 You are helping with memory retrieval. Given a question about a person's past conversations,
 generate a short hypothetical memory excerpt that would contain the answer.
@@ -436,8 +466,9 @@ def build_context(
     return assembled.text, assembled.excerpt_count, stats
 
 
-def _pick_prompt(qtype: str, use_temporal: bool) -> str:
+def _pick_prompt(qtype: str, use_temporal: bool, temporal_v2: bool = False) -> str:
     """Select answer prompt based on question type."""
+    temporal_tpl = ANSWER_PROMPT_TEMPORAL_V2 if temporal_v2 else ANSWER_PROMPT_TEMPORAL
     if qtype == "single-session-preference":
         return ANSWER_PROMPT_PREFERENCE
     if qtype == "single-session-assistant":
@@ -445,10 +476,10 @@ def _pick_prompt(qtype: str, use_temporal: bool) -> str:
     if qtype == "multi-session":
         return ANSWER_PROMPT_COUNTING
     if qtype == "temporal-reasoning":
-        return ANSWER_PROMPT_TEMPORAL  # temporal prompt only for this type
+        return temporal_tpl  # temporal prompt only for this type
     # For all other types, use temporal only if explicitly forced
     if use_temporal:
-        return ANSWER_PROMPT_TEMPORAL
+        return temporal_tpl
     return ANSWER_PROMPT
 
 
@@ -458,6 +489,7 @@ async def run(
     top_k: int,
     use_judge: bool,
     use_temporal: bool,
+    temporal_v2: bool,
     use_hyde: bool,
     engram_project: str,
     out_path: Path,
@@ -567,7 +599,7 @@ async def run(
                 # HyDE path keeps the historical raw join (chunks were prepended above)
                 context = "\n---\n".join(chunks) if chunks else "(no memory found)"
                 chunks_used = len(chunks)
-            prompt = _pick_prompt(qtype, use_temporal).format(
+            prompt = _pick_prompt(qtype, use_temporal, temporal_v2).format(
                 context=context, question=question_text, question_date=question_date
             )
 
@@ -755,6 +787,11 @@ def main() -> None:
         help="Prepend the recency note (latest-dated value is current) to the assembled context",
     )
     ap.add_argument(
+        "--temporal-v2", action="store_true",
+        help="Use the v2 temporal answer prompt: tells the reader the answer is DERIVED "
+             "from dates and to refuse only when the underlying events are missing. v1's "
+             "blanket 'say Unknown if not found' licenses refusal on every computed answer.")
+    ap.add_argument(
         "--types", default="",
         help="Comma-separated question types to run (default: all), e.g. multi-session",
     )
@@ -830,6 +867,7 @@ def main() -> None:
             top_k=args.top_k,
             use_judge=args.judge,
             use_temporal=args.temporal,
+            temporal_v2=args.temporal_v2,
             use_hyde=args.hyde,
             engram_project=args.engram_project,
             out_path=out_path,
