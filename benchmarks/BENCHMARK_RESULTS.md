@@ -2325,3 +2325,71 @@ v2 is **not shipped**. +5.3pp at p=0.189 over 133 questions is encouraging and
 underpowered — 14 fixes against 7 breaks. The wording flaw is known and cheap to
 fix, so the right move is v3 rather than shipping a prompt with a diagnosed
 defect.
+
+## September 2026 — multi-session diagnosis: the answer is being truncated away
+
+`multi-session` loses 53 of 133 questions with zero refusals and 74% wrong
+numbers. The cause is not counting ability. It is a collision between
+`ANSWER_PROMPT_COUNTING` and the 80-token generation cap.
+
+The counting prompt instructs:
+
+> 1. Search ALL excerpts for every relevant item or event.
+> 2. List each one briefly.
+> 3. **On the LAST LINE**, write ONLY the final answer as a number.
+
+The reader adds a preamble ("Based on the memory excerpts, here are…"), writes
+verbose bullets, and runs out of tokens **before reaching the last line**. The
+answer is the one part of the response guaranteed to be lost.
+
+### Evidence
+
+| | n | hit rate |
+|---|---|---|
+| multi-session, answer truncated mid-sentence | 44 | **0.39** |
+| multi-session, complete answer | 89 | **0.71** |
+
+Truncated word counts: median 48, max 65 — clustered exactly at the cap
+(80 tokens ≈ 55–65 words).
+
+**Truncation occurs in `multi-session` and nowhere else** — 44/133 there, and
+**0** in all five other question types combined. Only multi-session uses the
+counting prompt; every other type is told to answer concisely and does.
+
+Preambles track the same way: 36 of 53 misses begin "Based on the memory
+excerpts…" against 23 of 80 hits.
+
+Raw examples, both cut mid-word with no answer ever emitted:
+
+```
+- **Senior Software Engineer role**: The user stated, "I was promoted to a
+  senior software engineer position... and have been leading a t      [gold: 2]
+
+1. **Doctor's Appointment Date**: ... This places the appointment on
+   **Thursday, May 18,                                             [gold: 2 AM]
+```
+
+### The fix is structural, not a matter of degree
+
+Raising the cap would help but leaves the answer last and therefore always the
+first casualty of any limit. **Put the number on the FIRST line and the
+supporting list after it.** Then truncation costs the working, never the answer —
+and the list still earns its keep, since asking for enumeration is what makes the
+model actually scan every excerpt.
+
+### Expected size
+
+If truncated answers performed like complete ones (0.39 → 0.71), that is ~14
+questions, taking multi-session from **0.602 to roughly 0.71** and overall e2e
+up by **~2.8pp**. Larger than the entire embedder programme delivered, from a
+prompt reordering.
+
+### Both reader diagnoses together
+
+| type | mechanism | status |
+|---|---|---|
+| temporal-reasoning | prompt licenses refusal on computed answers | v2 tested: +5.3pp, p=0.189, wording defect found |
+| multi-session | answer placed last, truncated by the token cap | diagnosed, untested |
+
+They are unrelated bugs in two different prompts, which is why the aggregate
+"the reader is weak" framing was never actionable.
