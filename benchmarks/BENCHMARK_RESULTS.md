@@ -2186,3 +2186,80 @@ A narrower subset may still be free — `tiebreak`, `temporal_boost` and
 individually. But that combination would need its own 1.7h verification, and the
 payoff (three small stages) does not justify the cycle while the reader carries
 a ~30pp gap on the two largest question types.
+
+## September 2026 — Reader failure analysis: three different problems, not one
+
+Offline analysis of the stored 2026-09-13 e2e run (500 questions, 134 misses)
+joined against retrieval rankings. No GPU, no server.
+
+### The reader is the bottleneck, quantified
+
+| type | n | e2e | misses | misses with gold in top-10 | gold never found |
+|---|---|---|---|---|---|
+| temporal-reasoning | 133 | 0.632 | 49 | **45** | 1 |
+| multi-session | 133 | 0.602 | 53 | **45** | 4 |
+| single-session-preference | 30 | 0.567 | 13 | 6 | 3 |
+| knowledge-update | 78 | 0.821 | 14 | **13** | 1 |
+
+**~90% of end-to-end misses had the evidence in the top 10.** Retrieval is not
+what is losing these questions.
+
+### The failure modes are type-specific
+
+| type | misses | refused ("Unknown") | wrong number | wrong content |
+|---|---|---|---|---|
+| temporal-reasoning | 49 | **32 (65%)** | 7 | 10 |
+| multi-session | 53 | 0 | **39 (74%)** | 13 |
+| single-session-preference | 13 | 0 | 0 | **12 (92%)** |
+| knowledge-update | 14 | 3 | 6 | 5 |
+
+These want three different fixes:
+
+- **temporal-reasoning refuses.** The reader answers "Unknown" on 32 questions
+  whose evidence it was given. It is not computing badly; it is declining.
+- **multi-session miscounts.** Zero refusals — it always answers, and 74% of the
+  time the number is wrong. An aggregation problem.
+- **preference mismatches on content.** No refusals, no arithmetic. Possibly
+  judge strictness on subjective answers; needs its own look.
+
+Refusals are not a context-size artefact: refused questions average 5.7
+excerpts / 25,143 chars against 6.4 / 28,222 for hits, and **zero** were
+truncated.
+
+### A real gap in the date-arithmetic gate
+
+The Phase 3 day-delta annotation is gated on `needs_date_arithmetic`. That gate
+fires on **90% of temporal hits but only 66% of temporal refusals** — the
+questions that refuse are disproportionately ones that never got the annotation.
+
+The 11 uncovered refusals are unmistakably date arithmetic:
+*"How long had I been a member of 'Book Lovers Unite' when I attended the
+meetup?"*, *"How old was I when I moved to the United States?"*, *"How many days
+did I spend on my solo camping trip?"* — the cue regex requires a time-unit word
+followed by a temporal preposition, so "how long" and "how old" fall straight
+through.
+
+**Widening it is not free.** The obvious extension (time-unit near
+spend/take/total) catches exactly the item-counting aggregations that Phase 3
+measured the deltas as *harmful* for — and `is_counting_query` gates K-selection
+and the recency note but **not** the deltas, so counting queries are currently
+protected only *by accident*, because their phrasing happens not to match.
+
+Variants measured against the 133 temporal questions and the whole 500:
+
+| variant | covers missed refusals | temporal coverage | newly fires | of which counting |
+|---|---|---|---|---|
+| A: `how long` / `how old` | 6/11 | 112 → **122** | 30 | **0** |
+| B: A + unit near spend/total | 8/11 | 112 → 125 | 47 | **16** |
+| C: B suppressed on counting | 6/11 | — | 31 | 0 |
+
+**Variant A is the safe change** — same coverage as C with less machinery, and no
+counting-query contamination. Two lines.
+
+### But the gate is not the main story
+
+21 of the 32 temporal refusals **already fire the gate**, get the day-delta
+annotation, and refuse anyway. Fixing the gate addresses at most 6 questions
+(~1.2pp overall, ~4.5pp on temporal). The larger question — why a reader holding
+dated evidence and pre-computed deltas answers "Unknown" — is a prompt or model
+property, and is where the remaining temporal loss lives.
