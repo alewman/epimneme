@@ -2448,3 +2448,64 @@ e2e **0.732 → ~0.764** from a single integer. With temporal v2's +5.3pp
 diagnoses together are worth roughly **+4.6pp of end-to-end accuracy** —
 against a retrieval programme, including an embedder swap, that yielded nothing
 measurable.
+
+## September 2026 — Temporal prompt v3, and the combined reader result
+
+v3 fixes the two defects v2 exposed: keep the unit on elapsed times, and name
+events for ordering questions instead of answering with indices. One arm,
+compared against the v1 control run the previous day on the identical pool,
+model and flags (which reproduced the stored 0.632 exactly).
+
+### Three arms, judged, 133 temporal questions
+
+| comparison | from | to | Δ | fixes | breaks | p |
+|---|---|---|---|---|---|---|
+| v1 → v2 | 0.632 | 0.684 | +0.053 | 14 | 7 | 0.189 |
+| **v1 → v3** | **0.632** | **0.707** | **+0.075** | **17** | **7** | **0.064** |
+| v2 → v3 | 0.684 | 0.707 | +0.023 | 9 | 6 | 0.607 |
+
+Every diagnostic moved as predicted:
+
+| | v1 | v2 | v3 |
+|---|---|---|---|
+| "Unknown" answers | 38 | 19 | **10** |
+| bare-number answers (no unit) | 1 | **53** | **2** |
+| of v2's 7 regressions, recovered | — | — | 4/7, **3/3 ordering** |
+
+v2's unit-dropping was real and large — 53 of 133 answers were a bare number —
+and v3 eliminates it. Exact match, which is what that defect broke, rises
+0.556 (v1) → 0.421 (v2) → **0.662** (v3).
+
+**p=0.064 is the best this benchmark can give at this effect size.** n is fixed
+at 133 temporal questions; 17 fixes against 7 breaks cannot reach p<0.05 there.
+The mechanism is confirmed independently by the diagnostic table, so the verdict
+rests on that rather than on the aggregate p alone.
+
+### Combined effect on the full benchmark
+
+Substituting both reader fixes into the stored 500-question run:
+
+| configuration | e2e | Δ |
+|---|---|---|
+| stored baseline | 0.7320 | — |
+| + temporal v3 | 0.7520 | +0.0200 |
+| + counting cap 256 | 0.7640 | +0.0320 |
+| **+ both** | **0.7840** | **+0.0520** |
+
+| type | before | after |
+|---|---|---|
+| temporal-reasoning | 0.632 | **0.707** |
+| multi-session | 0.602 | **0.722** |
+
+**e2e 0.732 → 0.784, +5.2pp, from two prompt-level changes and one integer.**
+
+For contrast, the retrieval programme that preceded it — six channels ablated
+live, fourteen post-fusion stages, a full embedder evaluation across four
+candidate models, and a prune list — produced **nothing measurable**. Retrieval
+sits at a ceiling of EC@10 0.87–0.88 that none of it moved.
+
+### Standing recommendation
+
+Reader-side work is where the remaining accuracy is. The two bugs found were
+both in prompts, both invisible in aggregate metrics, and both found by reading
+the actual generated text rather than the summary line.

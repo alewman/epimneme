@@ -103,6 +103,37 @@ Memory excerpts:
 Question: {question}
 Answer:"""
 
+# v3 fixes the two defects measured in v2 (+5.3pp judged, p=0.189, 14 fixes /
+# 7 breaks). Five of those 7 regressions wanted a NAME and got a number — v2's
+# "a number or a short phrase" pushed the reader to answer ordering questions as
+# "2, 3, 1". v2 also dropped units ("7" for gold "7 days"), which exact-match
+# scored as wrong even though the judge later rescued it; a bare number is worse
+# than useless to a downstream consumer regardless of how it scores here.
+ANSWER_PROMPT_TEMPORAL_V3 = """\
+You are answering a question about a person's past conversations stored as memory excerpts.
+Each excerpt begins with a [Date: YYYY/MM/DD HH:MM — N days before the question] header.
+Today's date is: {question_date}
+
+The answer is usually NOT stated in the excerpts — compute it from the dates. Find the
+relevant event(s), then calculate the interval the question asks for, converting days
+into weeks or months when that is the unit requested.
+
+Answer "Unknown" ONLY if the underlying events themselves are absent from the excerpts.
+Never answer "Unknown" merely because the number is not written down.
+
+How to format the answer:
+- For an elapsed time, give the number WITH its unit — "7 days", "3 weeks", "2 months".
+  Never a bare number.
+- For a question about order, or which came first or last, name the events themselves
+  in the order asked. Never answer with positions, indices or numbers.
+- Give only the answer. No preamble, no working, no explanation.
+
+Memory excerpts:
+{context}
+
+Question: {question}
+Answer:"""
+
 HYDE_PROMPT = """\
 You are helping with memory retrieval. Given a question about a person's past conversations,
 generate a short hypothetical memory excerpt that would contain the answer.
@@ -466,9 +497,11 @@ def build_context(
     return assembled.text, assembled.excerpt_count, stats
 
 
-def _pick_prompt(qtype: str, use_temporal: bool, temporal_v2: bool = False) -> str:
+def _pick_prompt(qtype: str, use_temporal: bool, temporal_version: str = "v1") -> str:
     """Select answer prompt based on question type."""
-    temporal_tpl = ANSWER_PROMPT_TEMPORAL_V2 if temporal_v2 else ANSWER_PROMPT_TEMPORAL
+    temporal_tpl = {"v1": ANSWER_PROMPT_TEMPORAL,
+                    "v2": ANSWER_PROMPT_TEMPORAL_V2,
+                    "v3": ANSWER_PROMPT_TEMPORAL_V3}[temporal_version]
     if qtype == "single-session-preference":
         return ANSWER_PROMPT_PREFERENCE
     if qtype == "single-session-assistant":
@@ -489,7 +522,7 @@ async def run(
     top_k: int,
     use_judge: bool,
     use_temporal: bool,
-    temporal_v2: bool,
+    temporal_version: str,
     counting_max_tokens: int,
     use_hyde: bool,
     engram_project: str,
@@ -600,7 +633,7 @@ async def run(
                 # HyDE path keeps the historical raw join (chunks were prepended above)
                 context = "\n---\n".join(chunks) if chunks else "(no memory found)"
                 chunks_used = len(chunks)
-            prompt = _pick_prompt(qtype, use_temporal, temporal_v2).format(
+            prompt = _pick_prompt(qtype, use_temporal, temporal_version).format(
                 context=context, question=question_text, question_date=question_date
             )
 
@@ -801,6 +834,11 @@ def main() -> None:
              "prompt puts the answer on the LAST line, so the default 80 truncates it "
              "away on a third of those questions. 256 gives the list room to finish.")
     ap.add_argument(
+        "--temporal-v3", action="store_true",
+        help="v3 temporal prompt: v2 plus the two defects it exposed — keep the unit "
+             "on elapsed times, and name events for ordering questions instead of "
+             "answering with indices.")
+    ap.add_argument(
         "--temporal-v2", action="store_true",
         help="Use the v2 temporal answer prompt: tells the reader the answer is DERIVED "
              "from dates and to refuse only when the underlying events are missing. v1's "
@@ -881,7 +919,7 @@ def main() -> None:
             top_k=args.top_k,
             use_judge=args.judge,
             use_temporal=args.temporal,
-            temporal_v2=args.temporal_v2,
+            temporal_version=("v3" if args.temporal_v3 else "v2" if args.temporal_v2 else "v1"),
             counting_max_tokens=args.counting_max_tokens,
             use_hyde=args.hyde,
             engram_project=args.engram_project,
