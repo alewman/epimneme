@@ -31,6 +31,10 @@ On **LongMemEval-S** (500 questions, 6 question types) with **no LLM reranking**
 
 Retrieval alone (the numbers above) is only half the story — see [`assembly.py`](src/epimneme/assembly.py) for a deterministic, still-$0 context-assembly stage (`assemble=true` on search / the MCP `recall` tool) that precomputes date arithmetic, prunes superseded facts, and groups by session before handing context to a reader model.
 
+**End to end**, with a local reader (`qwen3.8:27b` via Ollama) answering from assembled context, judged over the same 500 questions: **0.784**.
+
+Retrieval is close to saturated — R@10 is 98.2% and turn-level evidence completeness 0.871 — so most remaining error is reader-side, not retrieval-side. Two prompt-level fixes found by reading generated answers rather than aggregate scores were worth +5.2pp end to end, against nothing measurable from an extensive retrieval and embedder programme. If you are building on top of `recall()`, the pitfalls are written up in the `epimneme://recipes/answering-from-recall` MCP resource ([`skills.py`](src/epimneme/skills.py)) — briefly: never place the final answer last under a token cap, and never offer a blanket "say Unknown if not found" for answers that must be computed.
+
 See [benchmarks/BENCHMARK_RESULTS.md](benchmarks/BENCHMARK_RESULTS.md) for the full write-up, including LoCoMo numbers and a per-category breakdown against [MemPalace](https://github.com/Chessnl/mempalace).
 
 ## Quick Start

@@ -2,6 +2,78 @@
 
 > **Note:** These benchmarks were collected when this project was called *Engram*. The project was subsequently renamed to *Epimneme* — the codebase and retrieval logic are identical. Result filenames and run logs retain the original `engram_` prefix as historical record.
 
+---
+
+## Current state (2026-09-25) — read this first
+
+This file is an append-only lab log spanning six months. Several early sections
+were later shown to be wrong and are corrected further down. **This section is
+authoritative; where anything below disagrees with it, this wins.**
+
+### Headline
+
+| | value |
+|---|---|
+| Retrieval, session R@1 / R@5 / R@10 | 0.858 / 0.968 / 0.982 |
+| Retrieval, turn hit@1 / hit@10 / EC@10 (true gold) | 0.585 / 0.952 / 0.871 |
+| **End-to-end, judged, 500 questions** | **0.784** (was 0.732) |
+
+### Per type
+
+| type | n | sess R@5 | turn hit@10 | turn EC@10 | e2e |
+|---|---|---|---|---|---|
+| single-session-assistant | 56 | 1.000 | 0.982 | 0.982 | 0.982 |
+| single-session-user | 70 | 0.986 | 0.984 | 0.984 | 0.943 |
+| knowledge-update | 78 | 1.000 | **1.000** | 0.961 | 0.821 |
+| multi-session | 133 | 0.977 | 0.936 | 0.746 | 0.722 |
+| temporal-reasoning | 133 | 0.955 | 0.962 | 0.881 | 0.707 |
+| single-session-preference | 30 | **0.800** | **0.733** | **0.678** | 0.567 |
+
+### The two findings that matter
+
+**Retrieval is at a ceiling nothing moved.** Six RRF channels ablated live,
+fourteen post-fusion stages ablated live, four candidate embedders screened
+(including a 596M and a 308M model), and a five-stage prune list — none produced
+a measurable end-to-end gain. EmbeddingGemma beat MiniLM by +0.097 EC@10 *on the
+semantic channel* and by +0.003 *through the pipeline*, because the post-fusion
+stack absorbs variation in its input.
+
+**Every gain came from the reader.** Two prompt-level bugs, both invisible in
+aggregate metrics, together worth **+5.2pp end-to-end**:
+
+- *multi-session* (+12pp): the counting prompt put the final total on the last
+  line and an 80-token cap truncated it away — 44 of 133 answers cut off mid-
+  sentence.
+- *temporal-reasoning* (+7.5pp): the prompt said "say Unknown if the answer
+  cannot be found", but a temporal answer is computed and never literally
+  present, so the reader declined on evidence it had.
+
+Both are consumer-side; see `epimneme://recipes/answering-from-recall`.
+
+### Superseded sections — do not quote these
+
+| section | why |
+|---|---|
+| Retrieval channel ablation (offline) | wrong about all six channels when checked live |
+| Post-fusion stage ablation, EC-based rankings | computed on inflated turn gold |
+| "the right session but not the right evidence" | the premise was a 6x-inflated gold set |
+| Consolidated live ablation, EC columns | same inflated gold; session columns are fine |
+| The prune list as "measured free" | fails when the five are removed together |
+
+**Turn-level rule:** any turn metric dated before 2026-09-16 used "every turn of
+a gold session" as the gold, which inflates it ~6x and makes it session recall
+under a different name. Real evidence gold is the dataset's `has_answer` flag —
+use `longmemeval_bench.has_answer_gold()`.
+
+### Open
+
+`single-session-preference` is the only genuinely retrieval-bound type and has
+never been diagnosed. `knowledge-update` has *perfect* turn retrieval (hit@10
+1.000) and e2e 0.821 — an 18-point reader gap, also undiagnosed. 25 of 133
+multi-session answers still overrun even a 256-token cap.
+
+---
+
 Epimneme evaluated on the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and [LoCoMo](https://github.com/snap-research/locomo) long-term-memory retrieval benchmarks.
 
 - **No benchmark-specific tuning.** Retrieval is general-purpose.
@@ -1903,10 +1975,11 @@ If embedding stays in-process, EmbeddingGemma is still *deployable* at
 (a session writing 20 memories: 0.24s → 5.3s) — but CPU benchmarking becomes
 impractical and the HF token becomes a deploy requirement.
 
-## September 2026 — WHERE WE STAND (read this first)
+## September 2026 — status as of 2026-09-24 (superseded)
 
-This document spans months and several corrections. This section is the current
-state; where anything above disagrees with it, this section wins.
+> Superseded by **Current state** at the top of this document, which covers
+> the reader work that followed. Kept for the record; where the two disagree,
+> the top section wins.
 
 ### Still valid, never in doubt
 
