@@ -54,6 +54,13 @@ Engram — persistent memory for AI coding agents.
 - `recall()` supports `query`, `kind`, `project`, and `tags` filters.
 - The knowledge graph (`entity_track/relate/explore`) links concepts across memories.
 
+## Reading Recalled Memory
+`recall()` returns excerpts; how you prompt over them matters more than retrieval
+quality. Two measured pitfalls: never place the final answer last under a token
+cap (it gets truncated away), and never offer a blanket "say Unknown if not
+found" for answers that must be computed (readers take it literally and decline).
+See `epimneme://recipes/answering-from-recall`.
+
 Browse `epimneme://skills/*` resources for detailed recipes.\
 """
 
@@ -252,6 +259,59 @@ project_status(project="my-project")
 Returns memory counts by kind, recent sessions, active entities, and known issues.\
 """
 
+_RECIPE_ANSWERING = """\
+# Answering Questions from Recalled Memory
+
+`recall()` gives you excerpts. How you prompt your reader over them changes the
+answer more than the retrieval does. Both rules below were measured on
+LongMemEval-S (500 questions), and each was worth more than any retrieval change
+we could find.
+
+## 1. Never put the answer last under a token budget
+
+A prompt of the shape *"list every matching item, then give the total on the last
+line"* is a good way to make a model actually scan the context — and a good way
+to lose the answer. Enumeration is long, generation caps are short, and the total
+is the first thing a truncated response drops.
+
+Measured: 44 of 133 counting answers were cut off mid-sentence before reaching
+the total. Truncated answers were correct 39% of the time against 71% for
+complete ones. Raising the cap was worth **+12 points** of end-to-end accuracy
+(p=0.0001) — three quarters of the gain coming from exactly those truncated
+questions.
+
+- Give enumeration room, or ask for the answer **first** and the working after.
+- The failure is silent. The response looks like a real answer, just a wrong one.
+- Check for it directly: a response that ends without terminal punctuation is
+  truncated, however plausible its beginning.
+
+## 2. Do not offer "Unknown" when the answer must be computed
+
+A blanket *"if the answer cannot be found in the excerpts, say Unknown"* is right
+for lookups and wrong for anything derived. An elapsed time, a count, or an
+ordering is never literally present in the text, so a careful reader takes the
+instruction at its word and declines.
+
+Measured: 32 of 49 temporal misses were refusals, and two thirds of them had the
+dates needed sitting in the context. Narrowing the instruction to *"answer
+Unknown only if the underlying events are absent"* cut refusals from 38 to 10 and
+was worth **+7.5 points**.
+
+- Scope the escape hatch to missing **evidence**, not to a missing **answer**.
+- Say what to compute: *"find the events, then calculate the interval asked for"*.
+- Ask for the unit — *"7 days"*, not *"7"*. Without it a reader answers with a
+  bare number that is correct and unusable. This cost 53 of 133 answers in one run.
+- For ordering questions, say to name the events. Otherwise a reader primed to
+  compute will answer with positions: `2, 3, 1`.
+
+## 3. Read the generations, not the score
+
+Both bugs above are invisible in an aggregate metric and obvious in ten lines of
+output. One of them first appeared as a *significant regression* that was really
+a scorer rejecting `7` for `7 days`.
+"""
+
+
 _RECIPE_BEST_PRACTICES = """\
 # Best Practices
 
@@ -321,6 +381,7 @@ def register_skills(mcp_server: FastMCP) -> None:
             "| `epimneme://recipes/memory-kinds` | When to use each memory kind |\n"
             "| `epimneme://recipes/knowledge-graph` | Entity tracking and relationships |\n"
             "| `epimneme://recipes/cross-project` | Multi-project knowledge patterns |\n"
+            "| `epimneme://recipes/answering-from-recall` | Prompting a reader over recalled excerpts |\n"
             "| `epimneme://recipes/best-practices` | Tips for effective memory use |\n"
         )
 
@@ -343,6 +404,17 @@ def register_skills(mcp_server: FastMCP) -> None:
     )
     def recipe_kinds() -> str:
         return _RECIPE_MEMORY_KINDS
+
+    @mcp_server.resource(
+        "epimneme://recipes/answering-from-recall",
+        name="recipe-answering-from-recall",
+        title="Answering Questions from Recalled Memory",
+        description="How to prompt a reader over recalled excerpts — measured pitfalls "
+                    "that cost more accuracy than any retrieval change",
+        mime_type="text/markdown",
+    )
+    def recipe_answering() -> str:
+        return _RECIPE_ANSWERING
 
     @mcp_server.resource(
         "epimneme://recipes/knowledge-graph",

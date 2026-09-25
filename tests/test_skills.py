@@ -65,6 +65,7 @@ class TestResourceRegistration(unittest.TestCase):
         expected = [
             "epimneme://recipes/session-lifecycle",
             "epimneme://recipes/memory-kinds",
+            "epimneme://recipes/answering-from-recall",
             "epimneme://recipes/knowledge-graph",
             "epimneme://recipes/cross-project",
             "epimneme://recipes/best-practices",
@@ -74,9 +75,9 @@ class TestResourceRegistration(unittest.TestCase):
                 self.assertIn(uri, uris)
 
     def test_resource_count(self):
-        """Should have exactly 6 resources (1 overview + 5 recipes)."""
+        """Should have exactly 7 resources (1 overview + 6 recipes)."""
         resources = self.mcp._resource_manager._resources
-        self.assertEqual(len(resources), 6)
+        self.assertEqual(len(resources), 7)
 
     def test_resources_have_descriptions(self):
         """Every resource should have a description."""
