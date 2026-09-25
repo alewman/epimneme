@@ -456,6 +456,7 @@ def assemble_context(
     default_skip: Collection[str] = DEFAULT_SKIP,
     date_delta_gate: Callable[[str, date | None], bool] | None = needs_date_arithmetic,
     recency_note: bool = False,
+    recency_note_gate: Callable[[str], bool] | None = None,
 ) -> AssembledContext:
     """Run the full assembly pipeline: select → prune → budget → present.
 
@@ -507,9 +508,16 @@ def assemble_context(
         annotated, preamble = list(ordered), None
 
     parts = [preamble] if preamble else []
+    # Default gate: suppress on counting queries, where "the latest value wins"
+    # makes a reader report the last instance instead of the total. That also
+    # suppresses it on "how many followers do I have NOW" — one fact that was
+    # updated, phrased like an aggregation — which costs knowledge-update
+    # accuracy. Pass `recency_note_gate` to use a different rule, or
+    # `lambda q: True` to always emit.
+    _recency_ok = recency_note_gate or (lambda q: not is_counting_query(q))
     if (
         recency_note
-        and not is_counting_query(query)
+        and _recency_ok(query)
         and sum(1 for ex in annotated if excerpt_date(ex) is not None) >= 2
     ):
         parts.insert(0, RECENCY_NOTE)

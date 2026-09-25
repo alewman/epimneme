@@ -434,6 +434,7 @@ def build_context(
     fetch_neighbors=None,
     skip: tuple[str, ...] = (),
     recency_note: bool = False,
+    recency_ungated: bool = False,
 ) -> tuple[str, int, dict]:
     """Turn ranked retrieval items into the reader's context block.
 
@@ -486,6 +487,7 @@ def build_context(
         enable_parent_expansion=fetch_neighbors is not None,
         skip=skip,
         recency_note=recency_note,
+        recency_note_gate=((lambda q: True) if recency_ungated else None),
         **k_kwargs,
     )
     stats = {
@@ -537,6 +539,7 @@ async def run(
     assembly_parents: bool = False,
     assembly_skip: tuple[str, ...] = (),
     assembly_recency: bool = False,
+    assembly_recency_ungated: bool = False,
 ) -> None:
     # answer_prompt is now picked per question in the loop (see _pick_prompt)
     # Resume: load already-completed question IDs from output file
@@ -611,6 +614,7 @@ async def run(
                 fetch_neighbors=make_neighbor_fetcher(q) if (assembly_parents and use_assembly and not use_hyde) else None,
                 skip=assembly_skip,
                 recency_note=assembly_recency,
+                recency_ungated=assembly_recency_ungated,
             )
             chunks = [item["text"] for item in ranked[: (top_k * 2 if qtype == "multi-session" else top_k)]]
 
@@ -829,6 +833,11 @@ def main() -> None:
         help="Prepend the recency note (latest-dated value is current) to the assembled context",
     )
     ap.add_argument(
+        "--assembly-recency-ungated", action="store_true",
+        help="Emit the recency note even on counting queries. The default gate also "
+             "suppresses it on 'how many X do I have now', which is one updated fact "
+             "rather than an aggregation, costing knowledge-update accuracy.")
+    ap.add_argument(
         "--counting-max-tokens", type=int, default=80,
         help="Generation cap for multi-session (counting) questions. The counting "
              "prompt puts the answer on the LAST line, so the default 80 truncates it "
@@ -934,6 +943,7 @@ def main() -> None:
             assembly_parents=args.assembly_parents,
             assembly_skip=tuple(t.strip() for t in args.assembly_skip.split(",") if t.strip()),
             assembly_recency=args.assembly_recency,
+            assembly_recency_ungated=args.assembly_recency_ungated,
         )
     )
 

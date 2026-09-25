@@ -2650,3 +2650,61 @@ that is **+0.6pp** overall — real, but an order of magnitude smaller than the
 counting-cap fix. The remaining 8 KU misses already had the note and failed
 anyway; several look like judge strictness ("Above the bed" marked wrong against
 "in my bedroom") rather than reader error.
+
+## September 2026 — the recency-note trade was an artefact of truncation
+
+Phase 3 recorded the recency note as an unavoidable trade: ungated it gained
+knowledge-update (+3.8pp) and cost multi-session (−3.8pp), netting zero, so it
+was gated off for counting queries. **That trade no longer exists.**
+
+Re-measured under the current configuration (counting cap 256), 211 questions,
+gate as the only variable:
+
+| type | gated | ungated | Δ | fixes | breaks | p |
+|---|---|---|---|---|---|---|
+| knowledge-update | 0.821 | **0.859** | **+0.038** | 3 | **0** | 0.250 |
+| multi-session | 0.722 | 0.722 | +0.000 | 4 | 4 | 1.000 |
+
+knowledge-update reproduces the Phase 3 ungated figure of 0.859 **exactly** — an
+independent replication eleven days and one pipeline change later. p=0.250 is the
+floor for a 3–0 split; with three discordant questions no result can be
+significant, but the effect is strictly one-directional: nothing got worse.
+
+multi-session is genuinely unaffected — 4 fixes against 4 breaks is symmetric
+noise, not an offsetting trade.
+
+### Why the trade disappeared
+
+The Phase 3 cost was measured when multi-session ran under an 80-token cap and
+scored 0.602. The note tells a reader that the latest-dated value wins, which
+makes it reason about *which* value is latest — a longer answer. Under an
+80-token cap a longer answer lost its final line, which is where the counting
+prompt puts the total. **The note was never hurting counting accuracy; it was
+pushing counting answers over the truncation cliff.** Remove the cliff and the
+cost goes with it.
+
+This is the second time the 80-token cap turned out to be the hidden cause of a
+result attributed to something else.
+
+### Decision
+
+**Delete the counting gate on the recency note.** No current-state discriminator
+is needed — the problem it was designed to solve was a truncation artefact.
+`assemble_context` now takes `recency_note_gate` (default unchanged), so the
+policy is a caller-supplied rule rather than a hardcoded `not is_counting_query`.
+
+### Running total — all three reader fixes
+
+| type | before | after |
+|---|---|---|
+| knowledge-update | 0.821 | **0.859** |
+| multi-session | 0.602 | **0.722** |
+| temporal-reasoning | 0.632 | **0.707** |
+| single-session-assistant | 0.982 | 0.982 |
+| single-session-user | 0.943 | 0.943 |
+| single-session-preference | 0.567 | 0.567 |
+| **overall** | **0.732** | **0.790** |
+
+**e2e 0.732 → 0.790, +5.8pp**, from two prompt changes, one integer, and one
+deleted gate. Retrieval contributed nothing across the entire programme that
+preceded it.
