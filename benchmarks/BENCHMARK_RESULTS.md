@@ -2582,3 +2582,71 @@ sits at a ceiling of EC@10 0.87–0.88 that none of it moved.
 Reader-side work is where the remaining accuracy is. The two bugs found were
 both in prompts, both invisible in aggregate metrics, and both found by reading
 the actual generated text rather than the summary line.
+
+## September 2026 — knowledge-update diagnosis: stale values, and a gate that cannot tell two things apart
+
+`knowledge-update` has **perfect** turn retrieval — hit@10 = 1.000, EC@10 0.961 —
+and e2e 0.821. All 14 misses had the evidence in the context.
+
+### The failure is almost entirely stale values
+
+The reader returns an earlier version of a fact that was later updated:
+
+| question | gold | generated |
+|---|---|---|
+| Instagram followers now? | 600 | 500 |
+| Instagram followers now? | 1300 | 1250 |
+| stars for gold level? | 120 | 125 |
+| dozen eggs stocked? | 20 | 30 |
+| pre-1920 coins? | 38 | 37 |
+| what time do I go to the gym? | 6:00 pm | 7:00 pm |
+| where was the guitar serviced? | music shop on Main St | Rhythm Central |
+
+That is exactly what the **recency note** ("the latest-dated value wins") exists
+to fix. It is currently suppressed on 6 of the 14 misses.
+
+### Why it is suppressed: `is_counting_query` conflates two question shapes
+
+The note is gated off for counting queries, because on aggregations it makes the
+reader report the latest instance instead of the total. But "how many Instagram
+followers do I have **now**" is a *single fact that was updated*, not an
+aggregation — and it is phrased identically to one. The gate fires on **38 of 78**
+knowledge-update questions.
+
+This was measured in Phase 3 and recorded as an unavoidable trade: ungated, KU
+0.859 / multi-session 0.564; gated, KU 0.821 / multi-session 0.602. Net zero, so
+it was gated off.
+
+### A discriminator exists
+
+Splitting counting questions into **current-state** and **past-aggregation**
+separates them cleanly. On the 6 counting-gated KU misses, 5 are current-state
+(`currently`, `now`, `do I have`) and the 6th is the one whose gold is
+"information not enough". Applied across the benchmark it would newly enable the
+note on 8 KU, 9 multi-session and 1 single-session-user question — 18 of 500,
+not a blanket change.
+
+Notably, the 9 multi-session questions it flags are themselves current-state
+("How many tanks do I **currently** have", "How many pages do I have **left** to
+read"), so the note may help rather than hurt them.
+
+### The trade should be re-measured before the discriminator is built
+
+The Phase 3 trade was measured when multi-session scored 0.602 — **before** the
+token-cap fix took it to 0.722. The note's cost there may have been partly
+mediated by truncation: a reader reasoning aloud about which value is latest
+produces a longer answer, and under an 80-token cap a longer answer lost its
+final line.
+
+So the cheaper first experiment is not the discriminator but **re-running the
+ungated note under the current configuration**, on knowledge-update and
+multi-session together. If the multi-session cost has evaporated, the fix is to
+delete a gate rather than to write a smarter one.
+
+### Sizing, honestly
+
+Upside is bounded: ungating previously gained KU +3.8pp (3 questions). Across 500
+that is **+0.6pp** overall — real, but an order of magnitude smaller than the
+counting-cap fix. The remaining 8 KU misses already had the note and failed
+anyway; several look like judge strictness ("Above the bed" marked wrong against
+"in my bedroom") rather than reader error.
