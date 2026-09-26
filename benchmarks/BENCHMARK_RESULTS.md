@@ -2875,3 +2875,67 @@ improvement in answer quality can score as a wash.
 single-session-preference stays at 0.567. Its remaining 7 retrieval-bound misses
 are the last unexplored lever in the benchmark, and need HyDE or query expansion
 rather than a prompt or a better embedder.
+
+## September 2026 — HyDE on preference: not as a replacement, possibly as a channel
+
+The preference diagnosis said the retrieval half fails on question/answer
+asymmetry — a conversational request ("recommend a show for tonight") matched
+against a stored preference ("I love stand-up comedy specials"). HyDE targets
+exactly that.
+
+Tested as a pure retrieval experiment, no reader: 30 preference questions, each
+haystack ingested, retrieved once with the plain question and once with a HyDE
+hypothetical, scored against true `has_answer` gold, cleaned up. Query text was
+the only variable.
+
+| metric | plain | HyDE | Δ | better | worse | p |
+|---|---|---|---|---|---|---|
+| turn hit@1 | 0.267 | 0.267 | +0.000 | 3 | 3 | 1.000 |
+| turn hit@10 | 0.733 | **0.667** | **−0.067** | 4 | 6 | 0.754 |
+| turn EC@10 | 0.678 | 0.639 | −0.039 | 6 | 6 | 1.000 |
+
+**As a replacement for the query, HyDE is a wash to slightly negative.**
+
+### But it retrieves genuinely complementary documents
+
+Plain retrieval missed 8 questions at hit@10. **HyDE rescued 4 of them** — and
+broke 6 that plain had. It is not worse at retrieval; it is differently right.
+
+That matters, because HyDE is normally deployed as an *additional* channel
+rather than a substitute, and this harness's own `--hyde` path does exactly that
+(`chunks = hyde_chunks + chunks`). Unioning the two top-10s would keep every
+plain hit and add the 4 rescues:
+
+| | hit@10 |
+|---|---|
+| plain | 0.733 |
+| HyDE (replacement) | 0.667 |
+| **union, upper bound** | **0.867** |
+
+at the cost of 20 chunks of context instead of 10.
+
+### Why this was tested as retrieval and not e2e
+
+The harness's `--hyde` also **disables assembly** (`use_assembly and not
+use_hyde`), so an e2e arm would have changed two things at once, and it needs
+live per-question projects that the retrieval harness deletes after each
+question. Testing the retrieval claim alone cost ~15 minutes and no reader time,
+and it answers the mechanism question directly.
+
+### Verdict
+
+The asymmetry diagnosis is **half right**: HyDE does reach documents the plain
+query cannot, on 4 of the 8 questions where plain retrieval fails. It just
+cannot be swapped in, because it loses as much as it gains.
+
+The follow-up worth running is fusion rather than substitution — HyDE as a
+seventh RRF channel, or a simple union of the two result sets. Ceiling on this
+type is ~4 questions (+0.8pp overall), so it is small; but unlike every other
+retrieval intervention tried in this programme, it has a mechanism that matches
+a diagnosed failure and evidence that the mechanism fires.
+
+### Limitation of this test
+
+Per-question rankings were not saved, so the union figure is an upper bound
+computed from hit/miss flags rather than a measured fusion. A real test would
+re-run with the rankings retained and fuse them properly.
