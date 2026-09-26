@@ -2999,3 +2999,80 @@ LLM call per query — which would end the "$0 per query, no LLM reranking"
 property the project currently advertises. For +0.4pp that trade is not
 obviously worth making, and should be a deliberate decision rather than a
 consequence of this result being the only positive one.
+
+## September 2026 — Reflection GC: a mislabelled decay curve is deleting the archive
+
+Not a benchmark result, but it is changing the production store, so it is
+recorded here.
+
+### What is happening
+
+2,558 of 4,051 memories (**63%**) are marked obsolete, and the daily 17:11
+reflection cycle keeps adding to it.
+
+The cause is one line in `decay.py`:
+
+```python
+# Power-law decay: R = e^(-t/S)
+retrievability = math.exp(-elapsed_days / stability)
+```
+
+The comment says power-law; the code is an exponential. `_phase_gc` obsoletes
+anything whose retrievability falls below 0.05, so the curve choice *is* the
+retention policy:
+
+| curve | R < 0.05 at |
+|---|---|
+| **as implemented** (exponential, stability 60d) | **180 days** |
+| as documented (FSRS power-law, `R = (1+t/9S)^-1`) | 10,260 days (**28 years**) |
+
+So any non-pinned, non-persistent `fact`/`observation`/`issue`/`pattern` that
+has not been *recalled* in ~180 days is silently soft-deleted. Observed average
+age of recently obsoleted memories: **183 days** — the model predicts the data.
+
+### The guards are fine; the curve is not
+
+`_phase_gc` correctly skips pinned memories, persistent projects and the exempt
+kinds (`decision`, `procedure`). Verified: **0 pinned memories have ever been
+obsoleted**, and the obsoleted kinds are exactly fact/observation/issue/pattern.
+
+### The cross-project conflict bug is real but is not firing
+
+`find_conflicting_pairs` filters on `kind` but **not** `project_id`, in both the
+candidate query and the KNN neighbour query — so a memory in one project can in
+principle be obsoleted by a similar one in another. Tested against the data at
+the real thresholds (similarity ≥ 0.85, age gap > 7 days): **no recently
+obsoleted memory has a plausible conflict-phase superseder**. The conflict phase
+is not what is deleting things; GC is. The bug should still be fixed, but it is
+not the present cause.
+
+(An earlier looser query suggested 88% cross-project obsoletion. That query
+ignored the similarity threshold and matched nearest neighbours at mean
+similarity 0.652, far below the 0.85 the phase requires — it was measuring
+nothing.)
+
+### Forward exposure
+
+Active, GC-eligible memories by time since last recall:
+
+| staleness | count | |
+|---|---|---|
+| > 180 days | **179** | already eligible on the next cycle |
+| 150–180 days | **135** | within a month |
+| 90–150 days | 547 | within four months |
+| < 90 days | 311 | |
+
+**On current behaviour roughly 860 of the 1,172 eligible active memories will be
+obsoleted within four months** unless they are recalled.
+
+### What to decide
+
+This is a policy question, not only a defect. A memory system whose value is
+recalling things you *don't* touch often should probably not delete on 180 days
+of disuse — but the fix is a one-line curve change with a 28-year horizon, which
+is effectively "never GC", and that may not be wanted either.
+
+Three levers, in order of bluntness: switch to the documented power-law curve;
+raise `EPIMNEME_DECAY_STABILITY` (30 → 180 moves the horizon to ~3 years); or
+lower `gc_retrievability_threshold`. All are reversible. Everything obsoleted so
+far is a soft delete — `obsolete = TRUE`, restorable by `updated_at` minute.
