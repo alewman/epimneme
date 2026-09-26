@@ -2708,3 +2708,49 @@ policy is a caller-supplied rule rather than a hardcoded `not is_counting_query`
 **e2e 0.732 → 0.790, +5.8pp**, from two prompt changes, one integer, and one
 deleted gate. Retrieval contributed nothing across the entire programme that
 preceded it.
+
+## September 2026 — cap 512 adds nothing; 256 was already enough
+
+| | cap 256 | cap 512 | Δ | fixes | breaks | p |
+|---|---|---|---|---|---|---|
+| multi-session (ungated recency) | 0.722 | 0.729 | +0.008 | 1 | 0 | 1.000 |
+
+One question changed. Raising the cap further is a no-op.
+
+### Correction: the "25 answers still overrunning 256 tokens" was wrong
+
+That figure came from the truncation heuristic — *no terminal punctuation and
+≥25 words* — which is what found the original bug and is **not** reliable for
+measuring the residual. Once real truncation is gone it keeps flagging answers
+that simply end on a bullet or a bare word.
+
+Checking whether the cap actually binds settles it:
+
+| arm | max words | p95 | at/near the cap |
+|---|---|---|---|
+| cap 80 (~60 words) | **65** | 57 | **8/133** |
+| cap 256 (~190 words) | 177 | 154 | 2/133 |
+| cap 512 (~380 words) | 316 | 182 | **0/133** |
+
+At cap 80 the longest answer is *exactly* at the limit and 8 questions are
+pressed against it — the constraint is real. At cap 256 almost nothing reaches
+it, and at 512 nothing does. **The cap stopped binding at 256**, which is why
+512 changes one question.
+
+So the remaining 37 multi-session misses are genuine counting errors, not
+truncation. The +12pp from cap 256 captured the whole truncation effect.
+
+### Lesson
+
+A detector good enough to *find* a bug is not automatically good enough to
+*measure what is left of it*. The heuristic had no false positives worth caring
+about while answers were genuinely being cut off, and mostly false positives
+afterwards. The cheap check — does the cap actually bind? — should have been the
+first thing measured, not the third.
+
+### Recommendation
+
+**Ship cap 256, not 512.** 512 costs generation time for one question. The
+consumer guidance should name a concrete number rather than "raise the cap":
+enough that the cap stops binding, verified by checking the longest answer
+against the limit, and no more.
