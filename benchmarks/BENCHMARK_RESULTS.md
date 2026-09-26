@@ -2939,3 +2939,63 @@ a diagnosed failure and evidence that the mechanism fires.
 Per-question rankings were not saved, so the union figure is an upper bound
 computed from hit/miss flags rather than a measured fusion. A real test would
 re-run with the rankings retained and fuse them properly.
+
+## September 2026 — HyDE as a fused channel: the first retrieval gain in the programme
+
+Re-ran the preference retrieval capture with **full 50-deep rankings retained**
+(`benchmarks/hyde_pref_rankings.jsonl`, 30 questions) so fusion could be
+measured rather than bounded, and several strategies compared offline without
+re-querying.
+
+### Same 10-chunk context budget
+
+| strategy | hit@10 | EC@10 | better / worse |
+|---|---|---|---|
+| plain (baseline) | 0.733 | 0.678 | — |
+| HyDE alone | 0.667 | 0.639 | 4 / 6 |
+| RRF 1.0 / 1.0 | 0.767 | 0.728 | 2 / 1 |
+| **RRF 1.0 / 0.5** | **0.800** | **0.761** | **2 / 0** |
+| RRF 1.0 / 0.25 | 0.767 | 0.728 | 1 / 0 |
+
+**+6.7pp hit@10, +8.3pp EC@10, strictly one-directional** — two questions fixed,
+none broken, at no extra context cost. The weight sweep peaks at 0.5 and falls
+off either side, which is the shape of a real signal rather than noise.
+
+### Correcting the earlier upper bound
+
+The previous section estimated a union "upper bound" of 0.867 hit@10 from
+hit/miss flags. Measured properly, that is simply **what plain retrieval already
+achieves at top-20**:
+
+| 20 chunks | hit@20 | EC@20 |
+|---|---|---|
+| plain top-20 | 0.867 | 0.811 |
+| union top-20 | **0.900** | **0.856** |
+
+So HyDE's real contribution at double budget is **+3.3pp**, not the +13pp the
+bound implied. The bound flattered the result by attributing to HyDE what was
+mostly just a larger budget. Saving the rankings is what exposed that.
+
+### Standing
+
+This is the **only retrieval intervention in the entire programme that improved
+anything** — against six RRF channels ablated live, fourteen post-fusion stages,
+four candidate embedders and a five-stage prune list, all of which measured zero.
+The difference is that the failure was diagnosed first (question/answer
+asymmetry on preference questions) and the intervention matches the diagnosis.
+
+### What it is not
+
+- **n=30, two discordant pairs, p=0.50.** Nothing here can reach significance;
+  the type is 6% of the benchmark.
+- **Measured on the plain search endpoint**, not through the full recall
+  pipeline. The post-fusion stack has absorbed every upstream gain tried so far —
+  a 21.4pp full-text swing and a 9.7pp embedder gain both went to zero through it.
+- Expected end-to-end value is therefore **~2 questions, +0.4pp overall**, and
+  could easily be nothing.
+
+Productionising would mean a seventh RRF channel whose population requires an
+LLM call per query — which would end the "$0 per query, no LLM reranking"
+property the project currently advertises. For +0.4pp that trade is not
+obviously worth making, and should be a deliberate decision rather than a
+consequence of this result being the only positive one.
