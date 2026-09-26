@@ -2814,3 +2814,64 @@ n=30, so the whole type is 6% of the benchmark. Fixing the reader half is worth
 ~6 questions (+1.2pp overall), the retrieval half ~7 (+1.4pp). Both are real and
 both are small; the reader half is much the cheaper of the two, being a prompt
 change against a diagnosis that is already quantified.
+
+## September 2026 — preference v2: the fix worked, the score did not move
+
+v2 demanded the answer name the remembered specifics instead of describing a
+response style. 30 questions, prompt as the only variable.
+
+| | v1 | v2 |
+|---|---|---|
+| e2e | 0.567 | 0.567 (3 fixes, 3 breaks, p=1.000) |
+| proper nouns named per answer | 0.67 | **3.37** |
+| content-word overlap with gold | 0.157 | **0.215** |
+| answers using style words | 22/30 | 19/30 |
+
+**The mechanism worked and the score did not.** Answers became five times more
+grounded, and v2 fixed **3 of the 6 reader-bound misses** while fixing 0 of the 7
+retrieval-bound ones — exactly the split the diagnosis predicted. It then broke
+three questions v1 had right.
+
+### Why specificity loses points here
+
+Every break is v1's vagueness being judged leniently where v2's specificity gave
+the judge something concrete to disagree with:
+
+| gold | v1 (correct) | v2 (wrong) |
+|---|---|---|
+| relaxing activities **in the evening** | "low-impact, relaxing, or nature-based activities" | "joint-friendly **outdoor** activities like walking, cycling" |
+| tips tailored to their **slow cooker** | "specific, actionable tips and step-by-step instructions" | "slow cooker techniques, such as **temperature settings or incubation times**" |
+| their plans to replace the **bedroom furniture** | "practical tips for optimizing space" | "their interest in **mid-century modern design**" |
+
+`JUDGE_PROMPT_PREFERENCE` says to answer NO "only if the preferences are
+genuinely about different topics". A vague answer is almost never about a
+different topic, so **it cannot lose**. A specific answer can, whenever the
+specific it picks is not the one the gold picked.
+
+**This metric rewards hedging.** v2's answers are arguably more useful — they
+name the person's actual balcony herb garden, their actual stand-up comedy
+interest — and score identically. That is a property of the benchmark, not of
+the pipeline.
+
+### Also: the fix overshot
+
+Hits historically name **0.94** proper nouns per answer. v2 produced **3.37** —
+roughly 3.5x the target. The instruction asked for the specifics without
+bounding how many, so the reader enumerated everything it could find, raising the
+chance that at least one named specific diverges from the gold.
+
+A v3 naming *one* specific — the single most relevant — would plausibly keep the
+3 fixes and avoid the 3 breaks. At n=30 with a 6-question ceiling that is worth
+about +0.5pp overall, which does not justify another arm.
+
+### Verdict
+
+**Not shipped.** Net zero on the benchmark, and the reason it is net zero is a
+judge property rather than a pipeline one. Recorded because the finding
+generalises: when an evaluator is instructed to be lenient about detail,
+measured accuracy will prefer answers that commit to nothing, and a genuine
+improvement in answer quality can score as a wash.
+
+single-session-preference stays at 0.567. Its remaining 7 retrieval-bound misses
+are the last unexplored lever in the benchmark, and need HyDE or query expansion
+rather than a prompt or a better embedder.

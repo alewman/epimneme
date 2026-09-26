@@ -157,6 +157,33 @@ Memory excerpts:
 Question: {question}
 Answer:"""
 
+# v2 targets the measured defect in v1: misses describe a response STYLE
+# ("practical, actionable tips") where gold names a remembered specific ("their
+# mixology class background"). Over 30 questions, misses had half the
+# content-word overlap with gold (0.103 vs 0.198) and named a third as many
+# proper nouns (0.31 vs 0.94). v1 asks for "the type of content, approach, or
+# suggestions they would want", which invites exactly that style description.
+ANSWER_PROMPT_PREFERENCE_V2 = """\
+You are answering a question about a person's past conversations stored as memory excerpts.
+The question asks what this person would prefer or what suits them best.
+
+Ground the answer in what THIS person actually said or did. Name the concrete things from
+the excerpts — the brands, places, activities, people, or items they mentioned — that make
+this preference theirs and not just anyone's.
+
+Do not describe a style of response. Words like "specific", "actionable", "practical",
+"detailed" or "curated" say nothing about this person and do not answer the question.
+
+Start your answer with exactly: "The user would prefer responses that"
+Then complete the sentence, naming those specifics. Keep it to 1-2 sentences.
+Do NOT say Unknown unless there is zero relevant information.
+
+Memory excerpts:
+{context}
+
+Question: {question}
+Answer:"""
+
 ANSWER_PROMPT_ASSISTANT = """\
 You are answering a question about a person's past conversations stored as memory excerpts.
 Each excerpt may contain both [USER]: lines (what the person said) and [ASSISTANT]: lines \
@@ -499,13 +526,14 @@ def build_context(
     return assembled.text, assembled.excerpt_count, stats
 
 
-def _pick_prompt(qtype: str, use_temporal: bool, temporal_version: str = "v1") -> str:
+def _pick_prompt(qtype: str, use_temporal: bool, temporal_version: str = "v1",
+                 preference_v2: bool = False) -> str:
     """Select answer prompt based on question type."""
     temporal_tpl = {"v1": ANSWER_PROMPT_TEMPORAL,
                     "v2": ANSWER_PROMPT_TEMPORAL_V2,
                     "v3": ANSWER_PROMPT_TEMPORAL_V3}[temporal_version]
     if qtype == "single-session-preference":
-        return ANSWER_PROMPT_PREFERENCE
+        return ANSWER_PROMPT_PREFERENCE_V2 if preference_v2 else ANSWER_PROMPT_PREFERENCE
     if qtype == "single-session-assistant":
         return ANSWER_PROMPT_ASSISTANT
     if qtype == "multi-session":
@@ -525,6 +553,7 @@ async def run(
     use_judge: bool,
     use_temporal: bool,
     temporal_version: str,
+    preference_v2: bool,
     counting_max_tokens: int,
     use_hyde: bool,
     engram_project: str,
@@ -637,7 +666,7 @@ async def run(
                 # HyDE path keeps the historical raw join (chunks were prepended above)
                 context = "\n---\n".join(chunks) if chunks else "(no memory found)"
                 chunks_used = len(chunks)
-            prompt = _pick_prompt(qtype, use_temporal, temporal_version).format(
+            prompt = _pick_prompt(qtype, use_temporal, temporal_version, preference_v2).format(
                 context=context, question=question_text, question_date=question_date
             )
 
@@ -843,6 +872,11 @@ def main() -> None:
              "prompt puts the answer on the LAST line, so the default 80 truncates it "
              "away on a third of those questions. 256 gives the list room to finish.")
     ap.add_argument(
+        "--preference-v2", action="store_true",
+        help="v2 preference prompt: demand the answer NAME the remembered specifics "
+             "instead of describing a response style. v1's misses average 0.31 proper "
+             "nouns against 0.94 for hits.")
+    ap.add_argument(
         "--temporal-v3", action="store_true",
         help="v3 temporal prompt: v2 plus the two defects it exposed — keep the unit "
              "on elapsed times, and name events for ordering questions instead of "
@@ -929,6 +963,7 @@ def main() -> None:
             use_judge=args.judge,
             use_temporal=args.temporal,
             temporal_version=("v3" if args.temporal_v3 else "v2" if args.temporal_v2 else "v1"),
+            preference_v2=args.preference_v2,
             counting_max_tokens=args.counting_max_tokens,
             use_hyde=args.hyde,
             engram_project=args.engram_project,
