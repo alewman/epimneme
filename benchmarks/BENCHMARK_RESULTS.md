@@ -2754,3 +2754,63 @@ first thing measured, not the third.
 consumer guidance should name a concrete number rather than "raise the cap":
 enough that the cap stops binding, verified by checking the longest answer
 against the limit, and no more.
+
+## September 2026 — single-session-preference: half retrieval, half a generic reader
+
+30 questions, e2e 0.567, 13 misses. The worst retrieval of any type
+(sR@1 0.400, turn hit@10 0.733, EC@10 0.678) — and unlike every other type, the
+misses split almost evenly between the two stages.
+
+| | n |
+|---|---|
+| misses with gold in the top 10 — **reader-bound** | **6** |
+| misses with gold only at top-50 or never found — **retrieval-bound** | **7** |
+
+For contrast, 16 of the 17 hits had gold in the top 10.
+
+### The reader half: generic style instead of remembered specifics
+
+Every gold answer is grounded in a particular remembered detail:
+
+> "…build upon their previous mention of purchasing a portable charger"
+> "…considering their mixology class background"
+> "…incorporate their homegrown cherry tomatoes"
+> "…stand-up comedy specials on Netflix"
+
+Every generic miss describes a *response style* instead:
+
+> "…provide practical, actionable tips and specific strategies"
+> "…offer specific, curated lists of titles with brief descriptions"
+
+Measured over the 30 questions:
+
+| | hits | misses |
+|---|---|---|
+| content-word overlap with gold | 0.198 | **0.103** |
+| proper nouns named in the answer | 0.94 | **0.31** |
+
+Misses name a third as many concrete things. The prompt is a plausible cause: it
+asks for *"the type of content, approach, or suggestions they would want"*, which
+invites a description of style, and never asks the reader to **name the specific
+thing from the excerpts** that drives the preference.
+
+### The retrieval half: an asymmetric-matching problem
+
+The 7 retrieval-bound misses share a shape — a conversational request retrieving
+against a stored preference statement, with almost no lexical or topical overlap:
+
+> query: *"Can you recommend a show or movie for me to watch tonight?"*
+> memory: *"I love stand-up comedy specials"*
+
+This is why preference is the one type a better embedder did not rescue:
+EmbeddingGemma scored it R@1 0.400 / R@10 0.800, against MiniLM's 0.400 / 0.833 —
+no better. The gap is not embedding quality but question/answer asymmetry, which
+is what HyDE (`--hyde`, already in the harness and never evaluated on this type)
+is designed for.
+
+### Sizing
+
+n=30, so the whole type is 6% of the benchmark. Fixing the reader half is worth
+~6 questions (+1.2pp overall), the retrieval half ~7 (+1.4pp). Both are real and
+both are small; the reader half is much the cheaper of the two, being a prompt
+change against a diagnosis that is already quantified.
