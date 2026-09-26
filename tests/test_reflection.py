@@ -472,3 +472,37 @@ class TestFullCycle:
         assert result.consolidated == 0
         assert result.conflicts_resolved == 1
         assert result.error is None
+
+
+class TestConflictPairsProjectScoping:
+    """The conflict phase obsoletes the older memory of a similar pair. If the
+    pair can span projects, a memory can be deleted because of something in an
+    unrelated project — silent cross-project data loss.
+
+    The pairing happens in SQL, so the unit tests that mock
+    `find_conflicting_pairs` cannot catch a regression here. This asserts the
+    query text itself carries the constraint.
+    """
+
+    @staticmethod
+    def _query_text():
+        import inspect
+        from epimneme.stores.postgresql import PostgresStore
+        return inspect.getsource(PostgresStore.find_conflicting_pairs)
+
+    def test_knn_query_is_scoped_to_one_project(self):
+        src = self._query_text()
+        assert "m.project_id IS NOT DISTINCT FROM" in src, (
+            "the nearest-neighbour query must restrict candidates to the same "
+            "project, or conflict resolution can obsolete across projects")
+
+    def test_candidate_query_selects_project_id(self):
+        src = self._query_text()
+        assert "SELECT id, project_id, embedding, created_at" in src, (
+            "the candidate query must fetch project_id for the scoping to work")
+
+    def test_uses_null_safe_comparison(self):
+        """Plain `=` would drop every global (NULL-project) memory from
+        consideration instead of pairing them with each other."""
+        src = self._query_text()
+        assert "m.project_id = %s" not in src

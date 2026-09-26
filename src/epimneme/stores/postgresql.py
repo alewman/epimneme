@@ -76,6 +76,12 @@ class PostgresStore:
     async def _init_schema(self) -> None:
         """Create all tables, extensions, indexes if they don't exist."""
         async with self.pool.connection() as conn:
+            # Serialize concurrent schema init across multiple worker processes.
+            # Postgres's IF NOT EXISTS DDL is not fully race-proof under concurrent
+            # execution (observed: "tuple concurrently updated"). Transaction-scoped
+            # advisory lock auto-releases on commit/rollback -- no manual unlock needed.
+            await conn.execute("SELECT pg_advisory_xact_lock(847329001)")
+
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
@@ -2102,13 +2108,17 @@ class PostgresStore:
         HNSW index via ORDER BY <=> to find their nearest older neighbour.
         This is O(n·log n) at worst and leverages the vector index.
 
+        Pairs are always within a single project (NULL project_id pairs only
+        with NULL), so conflict resolution can never obsolete a memory because
+        of something in an unrelated project.
+
         Returns list of (newer_memory, older_memory, similarity) tuples.
         """
         # Step 1: Get recent candidate memories (the "newer" half of each pair)
         # Use a single connection for both the candidate fetch and KNN probes.
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                """SELECT id, embedding, created_at
+                """SELECT id, project_id, embedding, created_at
                    FROM memories
                    WHERE kind = %s
                      AND NOT obsolete
@@ -2131,11 +2141,17 @@ class PostgresStore:
                 if len(pair_ids) >= limit:
                     break
                 cur = await conn.execute(
+                    # project_id must match. Without it a memory in one project can
+                    # be obsoleted because a similar memory in an unrelated project
+                    # happens to be newer — silent cross-project data loss.
+                    # IS NOT DISTINCT FROM so global (NULL-project) memories pair
+                    # only with each other, never with a scoped project's.
                     """SELECT m.id,
                             1 - (m.embedding <=> %s::vector) AS sim
                        FROM memories m
                        WHERE m.kind = %s
                          AND m.id != %s
+                         AND m.project_id IS NOT DISTINCT FROM %s
                          AND NOT m.obsolete
                          AND m.embedding IS NOT NULL
                          AND m.created_at < %s
@@ -2146,6 +2162,7 @@ class PostgresStore:
                         str(nc["embedding"]),
                         kind,
                         nc["id"],
+                        nc["project_id"],
                         nc["created_at"],
                         nc["created_at"],
                         str(min_age_gap_days),

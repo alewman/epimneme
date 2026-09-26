@@ -1,9 +1,12 @@
-"""Memory decay — power-law retrievability scoring.
+"""Memory decay — EXPONENTIAL retrievability scoring.
 
-Simplified FSRS-inspired model:
+FSRS-inspired in shape, but the curve is an exponential, not the power law FSRS
+uses. This file previously described itself as power-law while implementing
+`e^(-t/S)`; the name was wrong, not the code.
+
 - storage_strength grows with each access (never decays)
-- retrieval_strength decays via power law since last access
-- retrievability = blend of both, used to boost/penalize search results
+- retrieval_strength decays exponentially since last access
+- retrievability = blend of both, used to boost/penalise search results
 
 On access:
     retrieval_strength resets to 1.0
@@ -13,6 +16,23 @@ Over time:
     retrievability = e^(-t / S)
     where t = days since last access
     and S = base_stability * (1 + storage_strength)
+
+WHY THE CURVE MATTERS OPERATIONALLY
+-----------------------------------
+`reflection._phase_gc` soft-deletes any non-pinned, non-exempt memory whose
+retrievability falls below `gc_retrievability_threshold` (0.05), so this
+function is the retention policy, not just a ranking signal.
+
+    exponential (this file), S = base_stability * 2   -> R<0.05 at  ~6x base_stability days
+    FSRS power law, R = (1 + t/(9S))^-1               -> R<0.05 at ~342x base_stability days
+
+At the old default `EPIMNEME_DECAY_STABILITY=30` that meant anything not
+*recalled* within ~180 days was obsoleted, which had marked 63% of one
+production store obsolete by 2026-09-26. The deployed fix was to raise
+`EPIMNEME_DECAY_STABILITY` to 180 (~3-year horizon) rather than change the
+curve, because a power law here is effectively "never GC" and that is a
+different policy decision. Adjust the horizon with that env var; switching to a
+true power law is a deliberate change, not a bug fix.
 """
 
 from __future__ import annotations
@@ -47,7 +67,8 @@ def calculate_retrievability(
     # Stability grows with storage strength
     stability = base_stability * (1.0 + storage_strength)
 
-    # Power-law decay: R = e^(-t/S)
+    # Exponential decay (NOT a power law — see the module docstring; this
+    # also sets the GC horizon via reflection._phase_gc).
     retrievability = math.exp(-elapsed_days / stability)
 
     return max(0.0, min(1.0, retrievability))
