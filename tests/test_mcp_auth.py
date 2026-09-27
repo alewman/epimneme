@@ -113,3 +113,34 @@ class TestMCPAuth:
         sent, send = _collect()
         await mw({"type": "lifespan"}, None, send)
         assert app.called
+
+
+@pytest.mark.asyncio
+class TestStreamableHTTPIsGuarded:
+    """/mcp is the stateless transport that replaces SSE for multi-worker
+    deployments. It must be behind the same Bearer check — adding a transport
+    that bypassed auth would reopen the hole this module exists to close."""
+
+    @pytest.mark.parametrize("path", ["/mcp", "/mcp/"])
+    async def test_streamable_requires_a_token(self, path):
+        app = _App()
+        mw = MCPAuthMiddleware(app)
+        sent, send = _collect()
+        await mw(_scope(path), None, send)
+        assert _status(sent) == 401
+        assert not app.called
+
+    async def test_streamable_accepts_a_valid_token(self):
+        app = _App()
+        mw = MCPAuthMiddleware(app)
+        sent, send = _collect()
+        with patch("epimneme.auth._resolve_bearer_token", AsyncMock(return_value=object())):
+            await mw(_scope("/mcp", {b"authorization": b"Bearer good"}), None, send)
+        assert app.called
+
+    async def test_lookalike_path_is_not_captured(self):
+        app = _App()
+        mw = MCPAuthMiddleware(app)
+        sent, send = _collect()
+        await mw(_scope("/mcpfoo"), None, send)
+        assert app.called, "/mcpfoo is not an MCP path"

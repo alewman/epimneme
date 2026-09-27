@@ -57,6 +57,20 @@ project reaches the thousands of memories.
 
 See [benchmarks/BENCHMARK_RESULTS.md](benchmarks/BENCHMARK_RESULTS.md) for the full write-up, including LoCoMo numbers and a per-category breakdown against [MemPalace](https://github.com/Chessnl/mempalace).
 
+### MCP transports
+
+Two are mounted, both requiring `Authorization: Bearer <api-key>`:
+
+| endpoint | transport | workers |
+|---|---|---|
+| **`/mcp`** | Streamable HTTP, **stateless** | any number |
+| `/sse` + `/messages` | SSE (legacy) | **1 only** |
+
+The SSE transport keeps its session map in process, so a `POST /messages` has to
+reach the same worker that holds the stream. Measured on four workers, only 2 of
+6 posts landed. **Prefer `/mcp`;** `/sse` is kept for existing clients and is the
+reason the server currently runs `--workers 1`.
+
 ## Quick Start
 
 ```bash

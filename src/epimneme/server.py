@@ -185,7 +185,13 @@ async def lifespan(app: FastAPI):
         f"reflection={'on' if config.reflection_enabled else 'off'} "
         f"(every {config.reflection_interval_hours}h)"
     )
-    yield
+
+    # Starlette does not run a mounted sub-application's lifespan, so the
+    # StreamableHTTP session manager has to be driven from here or every /mcp
+    # request fails with "Task group is not initialized".
+    async with mcp.session_manager.run():
+        yield
+
     await _reflection_scheduler.stop()
     await _manager.close()
     logger.info("Engram server stopped")
@@ -1376,6 +1382,13 @@ mcp = FastMCP(
     "epimneme",
     instructions=INSTRUCTIONS,
     transport_security=_transport_security,
+    # Streamable HTTP in STATELESS mode. The SSE transport keeps its session
+    # map in process, which is why this server is pinned to --workers 1: a POST
+    # to /messages lands on whichever worker the balancer picks and ~3 in 4 miss
+    # (measured: 1 worker 6/6 accepted, 4 workers 2/6). Stateless streamable
+    # HTTP carries no cross-request state, so /mcp is safe to serve from any
+    # number of workers.
+    stateless_http=True,
 )
 register_skills(mcp)
 
@@ -1859,6 +1872,13 @@ async def bulk_import(
 # Clients connect to /sse for the SSE stream and /messages for posting.
 # Main app routes (/, /api/*, /health) take precedence.
 
+# Streamable HTTP at /mcp (stateless, multi-worker safe) — mounted first so the
+# catch-all SSE mount at "/" cannot shadow it.
+streamable_app = mcp.streamable_http_app()
+app.mount("/mcp", streamable_app)
+
+# Legacy SSE transport. Stateful and therefore single-worker only; kept so
+# existing clients keep working while they migrate to /mcp.
 mcp_app = mcp.sse_app()
 app.mount("/", mcp_app)
 

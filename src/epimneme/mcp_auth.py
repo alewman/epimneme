@@ -21,7 +21,7 @@ logger = logging.getLogger("engram.mcp_auth")
 
 # Paths the MCP transport owns. Everything else is handled by FastAPI routes
 # with their own dependencies.
-MCP_PREFIXES = ("/sse", "/messages")
+MCP_PREFIXES = ("/sse", "/messages", "/mcp")
 
 _UNAUTHORIZED = json.dumps({
     "error": "Authentication required",
