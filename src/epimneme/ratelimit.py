@@ -3,11 +3,19 @@
 Token-bucket algorithm per client IP.  No external dependencies.
 
 Configuration via environment variables:
-  EPIMNEME_RATE_LIMIT_RPM      — requests per minute per IP  (default: 120)
-  EPIMNEME_RATE_LIMIT_BURST    — burst bucket size            (default: 30)
-  EPIMNEME_RATE_LIMIT_ENABLED  — "0" to disable              (default: "1")
+  EPIMNEME_RATE_LIMIT_RPM      - requests per minute per IP  (default: 120)
+  EPIMNEME_RATE_LIMIT_BURST    - burst bucket size            (default: 30)
+  EPIMNEME_RATE_LIMIT_ENABLED  - "0" to disable              (default: "1")
 
 Exempt paths: /health, /sse, /messages (SSE/MCP need persistent connections).
+
+Implemented as pure ASGI middleware (not starlette.middleware.base.BaseHTTPMiddleware).
+BaseHTTPMiddleware buffers/reconstructs every response -- including ones on an
+"exempt" early-return path -- via its call_next()/body_stream() machinery, which
+is incompatible with long-lived SSE streams and was the root cause of
+intermittent "Unexpected message: http.response.start" ASGI assertion crashes
+on /sse. Pure ASGI middleware lets exempt paths pass straight through to the
+app with zero response wrapping.
 """
 
 from __future__ import annotations
@@ -16,11 +24,9 @@ import os
 import time
 from collections import defaultdict
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 
-# ── Configuration ────────────────────────────────────────────────────────────
+# -- Configuration ------------------------------------------------------------
 
 RATE_LIMIT_RPM = int(os.environ.get("EPIMNEME_RATE_LIMIT_RPM", "120"))
 RATE_LIMIT_BURST = int(os.environ.get("EPIMNEME_RATE_LIMIT_BURST", "30"))
@@ -53,15 +59,15 @@ class _TokenBucket:
         return False
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-IP rate limiter using token-bucket algorithm.
+class RateLimitMiddleware:
+    """Per-IP rate limiter using token-bucket algorithm (pure ASGI).
 
     Attach to a FastAPI app:
         app.add_middleware(RateLimitMiddleware)
     """
 
     def __init__(self, app, rpm: int = RATE_LIMIT_RPM, burst: int = RATE_LIMIT_BURST):
-        super().__init__(app)
+        self.app = app
         self._rpm = rpm
         self._burst = burst
         self._rate = rpm / 60.0  # tokens per second
@@ -70,12 +76,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         self._last_cleanup = time.monotonic()
 
-    def _client_ip(self, request: Request) -> str:
+    def _client_ip(self, scope, headers: dict[bytes, bytes]) -> str:
         """Extract client IP, respecting X-Forwarded-For from Traefik."""
-        forwarded = request.headers.get("x-forwarded-for")
+        forwarded = headers.get(b"x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
+            return forwarded.decode("latin-1").split(",")[0].strip()
+        client = scope.get("client")
+        return client[0] if client else "unknown"
 
     def _cleanup_stale_buckets(self) -> None:
         """Periodically drop buckets that haven't been used in 10 minutes."""
@@ -90,22 +97,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         for k in stale_keys:
             del self._buckets[k]
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if not RATE_LIMIT_ENABLED:
-            return await call_next(request)
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or not RATE_LIMIT_ENABLED:
+            await self.app(scope, receive, send)
+            return
 
-        # Exempt certain paths
-        path = request.url.path
+        path = scope.get("path", "")
         if any(path.startswith(p) for p in _EXEMPT_PREFIXES):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        ip = self._client_ip(request)
+        headers = dict(scope.get("headers") or [])
+        ip = self._client_ip(scope, headers)
         bucket = self._buckets[ip]
 
         self._cleanup_stale_buckets()
 
         if not bucket.consume():
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=429,
                 content={
                     "error": "Rate limit exceeded",
@@ -116,7 +125,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "X-RateLimit-Limit": str(self._rpm),
                 },
             )
+            await response(scope, receive, send)
+            return
 
-        response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self._rpm)
-        return response
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", []).append(
+                    (b"x-ratelimit-limit", str(self._rpm).encode("latin-1"))
+                )
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
