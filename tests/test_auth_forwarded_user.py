@@ -70,3 +70,47 @@ class TestForwardedUserTrust:
             a = _auth_with(monkeypatch, EPIMNEME_TRUST_FORWARDED_USER=v)
             assert a.TRUST_FORWARDED_USER is False, v
             assert a._forwarded_user(_Headers({"X-Forwarded-User": "x"})) is None
+
+
+class TestMissingProjectIsNotAWildcard:
+    """A missing `project` used to return True from can_access_project, and the
+    store treats project_id=None as "every project" (the filter is only added
+    `if project_id`). A key scoped to one project could therefore read every
+    tenant by omitting the parameter — reproduced live on 2026-09-27.
+    """
+
+    @staticmethod
+    def _ctx(role, projects):
+        from epimneme.auth import AuthContext
+        return AuthContext(name="k", role=role, projects=projects, source="api_key")
+
+    def test_scoped_key_cannot_omit_project(self):
+        assert self._ctx("agent", ["proj-a"]).can_access_project(None) is False
+
+    def test_scoped_key_still_reaches_its_own_project(self):
+        c = self._ctx("agent", ["proj-a"])
+        assert c.can_access_project("proj-a") is True
+        assert c.can_access_project("proj-b") is False
+
+    def test_admin_and_wildcard_unaffected(self):
+        assert self._ctx("admin", ["*"]).can_access_project(None) is True
+        assert self._ctx("agent", ["*"]).can_access_project(None) is True
+        assert self._ctx("agent", ["a", "*"]).can_access_project(None) is True
+
+    def test_missing_project_is_400_not_403(self):
+        """403 would imply the project exists and is someone else's; the caller
+        simply has to name one."""
+        import pytest as _p
+        from fastapi import HTTPException
+        c = self._ctx("agent", ["proj-a"])
+        with _p.raises(HTTPException) as e:
+            c.enforce_project_access(None)
+        assert e.value.status_code == 400
+        assert "proj-a" in e.value.detail
+
+    def test_foreign_project_is_still_403(self):
+        import pytest as _p
+        from fastapi import HTTPException
+        with _p.raises(HTTPException) as e:
+            self._ctx("agent", ["proj-a"]).enforce_project_access("proj-b")
+        assert e.value.status_code == 403

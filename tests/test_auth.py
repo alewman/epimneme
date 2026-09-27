@@ -24,9 +24,23 @@ class TestAuthContext:
         assert auth.can_access_project("proj-b") is True
         assert auth.can_access_project("proj-c") is False
 
-    def test_agent_global_access(self):
+    def test_agent_cannot_use_a_missing_project_as_a_wildcard(self):
+        """This asserted `can_access_project(None) is True` — "global scope
+        accessible" — until 2026-09-27, when that turned out to grant every
+        tenant rather than the global one.
+
+        The store only appends its project filter `if project_id`, so None
+        means NO filter, i.e. every project. Reproduced live: a key scoped to
+        an empty project returned two other projects' memories.
+
+        Reading genuinely global (project_id IS NULL) memories is a real
+        feature and is NOT restored by this change — doing that safely needs
+        the store to filter `project_id IS NULL` rather than skip the filter,
+        which is a separate change across ~12 query methods. Until then scoped
+        keys must name a project.
+        """
         auth = AuthContext(name="agent1", role="agent", projects=["proj-a"], source="api_key")
-        assert auth.can_access_project(None) is True  # global scope accessible
+        assert auth.can_access_project(None) is False
 
     def test_wildcard_projects(self):
         auth = AuthContext(name="agent1", role="agent", projects=["*"], source="api_key")

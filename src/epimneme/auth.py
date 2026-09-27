@@ -40,16 +40,36 @@ class AuthContext:
     api_key_id: Optional[str] = None  # DB id of the API key (for project claiming)
 
     def can_access_project(self, project_name: Optional[str]) -> bool:
-        """Check if this auth context can access a given project."""
+        """Check if this auth context can access a given project.
+
+        A missing project is NOT a wildcard. Store queries treat
+        ``project_id=None`` as "every project" (see postgresql.py: the filter is
+        only appended ``if project_id``), so returning True here let a key
+        scoped to one project read every tenant's memories simply by omitting
+        the parameter. Reproduced live on 2026-09-27: a key scoped to an empty
+        project returned another project's rows.
+
+        Scoped keys must therefore name a project. Admins and ``*`` keys are
+        unaffected, and so is anything that already passes one.
+        """
         if self.role == "admin" or "*" in self.projects:
             return True
         if project_name is None:
-            return True  # Global scope accessible to all for reads
+            return False
         return project_name in self.projects
 
     def enforce_project_access(self, project_name: Optional[str]) -> None:
         """Raise 403 if project access is denied."""
         if not self.can_access_project(project_name):
+            if project_name is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"API key '{self.name}' is scoped to specific projects, so "
+                        f"'project' is required. Omitting it would search every "
+                        f"project. Pass one of: {', '.join(self.projects)}"
+                    ),
+                )
             raise HTTPException(
                 status_code=403,
                 detail=f"API key '{self.name}' does not have access to project {project_name}",
