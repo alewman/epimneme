@@ -28,6 +28,7 @@ from epimneme.core.models import (
     Project,
     Session,
 )
+from epimneme.tenancy import DEFAULT_OWNER_ID, global_project_id
 
 
 # ── Auth helpers ─────────────────────────────────────────────────────────────
@@ -64,6 +65,9 @@ def mock_store() -> AsyncMock:
 
     # Sensible defaults for commonly-called methods
     store.get_project.return_value = None
+    # Unscoped writes land in the caller's global project, so the resolver
+    # asks the store for its id on every remember()/track_entity().
+    store.ensure_global_project.return_value = global_project_id(DEFAULT_OWNER_ID)
     store.list_projects.return_value = []
     store.get_memory_count.return_value = 0
     store.get_vector_count.return_value = 0

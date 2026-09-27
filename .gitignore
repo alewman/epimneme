@@ -48,3 +48,4 @@ benchmarks/stages_*.jsonl
 
 # Embedder screen per-question rows
 benchmarks/embscreen/
+db-backups/

@@ -55,6 +55,11 @@ from epimneme.fusion import (
 )
 from epimneme.rerank import keyword_rerank
 from epimneme.stores.postgresql import PostgresStore
+from epimneme.tenancy import (
+    NO_SUCH_PROJECT,
+    ReservedProjectName,
+    is_reserved_project_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +252,33 @@ class MemoryManager:
         async with self._embed_semaphore:
             return await asyncio.to_thread(self._embed_batch_sync, texts)
 
+    # ── Project resolution ───────────────────────────────────────────────
+
+    async def _resolve_project_id(
+        self, project_name: Optional[str], *, create: bool = False
+    ) -> str:
+        """Map a project name to an id inside the caller's owner.
+
+        Always returns an id, never None, because None used to mean "no filter"
+        all the way down to SQL — so a scoped key could read every tenant by
+        omitting the project, and a typo'd name widened the search instead of
+        narrowing it.
+
+        * no name        → the owner's ``__global__`` project
+        * known name     → that project
+        * unknown name   → the project is created when ``create`` (writes), and
+                           otherwise :data:`NO_SUCH_PROJECT`, which matches
+                           nothing.
+        """
+        if not project_name:
+            return await self.store.ensure_global_project()
+        project = await self.store.get_project(project_name)
+        if project:
+            return project.id
+        if create:
+            return (await self.create_project(project_name)).id
+        return NO_SUCH_PROJECT
+
     # ── Projects ─────────────────────────────────────────────────────────
 
     async def create_project(
@@ -256,6 +288,8 @@ class MemoryManager:
         description: Optional[str] = None,
         persistent_memories: bool = False,
     ) -> Project:
+        if is_reserved_project_name(name):
+            raise ReservedProjectName(name)
         existing = await self.store.get_project(name)
         if existing:
             return existing
@@ -460,11 +494,7 @@ class MemoryManager:
 
         self._counter_remember_calls += 1
 
-        project_id = None
-        if project_name:
-            project = await self.store.get_project(project_name)
-            if project:
-                project_id = project.id
+        project_id = await self._resolve_project_id(project_name, create=True)
 
         # ── Pass 1: SimHash deduplication (fast, O(1) hash compare) ──
         simhash_val = None
@@ -713,11 +743,7 @@ class MemoryManager:
         if unknown:
             raise ValueError(f"unknown recall stage(s) to skip: {sorted(unknown)}")
 
-        project_id = None
-        if project_name:
-            project = await self.store.get_project(project_name)
-            if project:
-                project_id = project.id
+        project_id = await self._resolve_project_id(project_name)
 
         kind_enum = MemoryKind(kind) if kind else None
 
@@ -1182,12 +1208,8 @@ class MemoryManager:
         query: str,
         project_name: Optional[str] = None,
     ) -> ContextBundle:
-        project = None
-        project_id = None
-        if project_name:
-            project = await self.store.get_project(project_name)
-            if project:
-                project_id = project.id
+        project = await self.store.get_project(project_name) if project_name else None
+        project_id = await self._resolve_project_id(project_name)
 
         relevant = await self.recall(query, project_name=project_name, limit=15)
 
@@ -1275,11 +1297,7 @@ class MemoryManager:
         if isinstance(kind, str):
             kind = EntityKind(kind)
 
-        project_id = None
-        if project_name:
-            project = await self.store.get_project(project_name)
-            if project:
-                project_id = project.id
+        project_id = await self._resolve_project_id(project_name, create=True)
 
         entity = Entity(
             name=name,
@@ -1328,11 +1346,7 @@ class MemoryManager:
         direction: str = "both",
         project_name: Optional[str] = None,
     ) -> list[EntityResult]:
-        project_id = None
-        if project_name:
-            project = await self.store.get_project(project_name)
-            if project:
-                project_id = project.id
+        project_id = await self._resolve_project_id(project_name)
 
         return await self.store.explore(
             entity_name, depth=depth, direction=direction, project_id=project_id

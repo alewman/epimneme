@@ -36,7 +36,7 @@ from epimneme.backup import (
 
 def _make_archive(
     tables: dict | None = None,
-    format_version: int = 2,
+    format_version: int = CURRENT_FORMAT_VERSION,
     epimneme_version: str = "0.4.1",
 ) -> dict:
     """Build a minimal valid backup archive dict."""
@@ -334,7 +334,7 @@ class TestListBackups:
         _write_backup(tmp_path, "epimneme_backup_20250101T000000Z.json", archive)
 
         results = list_backups(tmp_path)
-        assert results[0]["format_version"] == 2
+        assert results[0]["format_version"] == CURRENT_FORMAT_VERSION
         assert results[0]["epimneme_version"] == "0.4.1"
         assert results[0]["metadata"]["tables"]["projects"] == 1
         assert results[0]["metadata"]["tables"]["memories"] == 2

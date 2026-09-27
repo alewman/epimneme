@@ -23,6 +23,7 @@ from epimneme.core.models import (
     Project,
     Relationship,
 )
+from epimneme.tenancy import DEFAULT_OWNER_ID
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -38,6 +39,18 @@ def _proj(name="test-proj") -> Project:
 
 def _ent(name="auth.py", kind=EntityKind.FILE) -> Entity:
     return Entity(name=name, kind=kind)
+
+
+def _own(mock_manager, project_name="test-proj", owner_id=DEFAULT_OWNER_ID):
+    """Arrange a by-id lookup: the memory exists, in a project with this owner.
+
+    The by-id routes resolve memory → project → owner before acting, so a
+    mocked store has to answer all three.
+    """
+    proj = Project(name=project_name, owner_id=owner_id)
+    mock_manager.store.get_memory.return_value = _mem("existing", project_id=proj.id)
+    mock_manager.store.get_project_by_id.return_value = proj
+    return proj
 
 
 # ── Health ───────────────────────────────────────────────────────────────────
@@ -162,6 +175,7 @@ class TestMemoriesAPI:
 
     @pytest.mark.asyncio
     async def test_update_memory(self, async_client, mock_manager):
+        _own(mock_manager)
         updated = _mem("Updated content")
         updated.version = 2
         updated.version_of = "orig-id"
@@ -175,6 +189,36 @@ class TestMemoriesAPI:
         assert data["version"] == 2
 
     @pytest.mark.asyncio
+    async def test_update_memory_rejects_another_owners_id(
+        self, async_client, mock_manager
+    ):
+        """A by-id route used to act on any id in the installation.
+
+        404, not 403: confirming that someone else's id exists is the leak.
+        """
+        _own(mock_manager, owner_id="99999999-9999-9999-9999-999999999999")
+        mock_manager.update_memory = AsyncMock(return_value=_mem("leaked"))
+
+        resp = await async_client.put("/api/memories/theirs", json={"content": "x"})
+        assert resp.status_code == 404
+        mock_manager.update_memory.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_rejects_a_project_the_key_lacks(
+        self, async_client, mock_manager, agent_auth
+    ):
+        from epimneme.auth import get_auth
+        from epimneme.server import app
+
+        _own(mock_manager, project_name="not-granted")
+        app.dependency_overrides[get_auth] = lambda: agent_auth
+        try:
+            resp = await async_client.delete("/api/memories/abc")
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_auth, None)
+
+    @pytest.mark.asyncio
     async def test_update_memory_not_found(self, async_client, mock_manager):
         mock_manager.update_memory = AsyncMock(return_value=None)
 
@@ -185,6 +229,7 @@ class TestMemoriesAPI:
 
     @pytest.mark.asyncio
     async def test_memory_versions(self, async_client, mock_manager):
+        _own(mock_manager)
         v1 = _mem("v1")
         v1.version = 1
         v2 = _mem("v2")
@@ -198,6 +243,7 @@ class TestMemoriesAPI:
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, async_client, mock_manager):
+        _own(mock_manager)
         mock_manager.forget = AsyncMock(return_value="Memory abc marked obsolete")
 
         resp = await async_client.delete("/api/memories/abc")

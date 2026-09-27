@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Distinct from the schema-init lock in PostgresStore._init_schema (847329001),
+# so the two cannot block each other.
+_MIGRATION_LOCK_KEY = 847329002
+
 
 class MigrationRunner:
     """Run forward-only numbered migrations (async)."""
@@ -71,18 +75,34 @@ class MigrationRunner:
         return migrations
 
     async def run_pending(self) -> int:
-        """Run all pending migrations. Returns count applied."""
+        """Run all pending migrations. Returns count applied.
+
+        Safe to call from every worker at once. The server runs with several
+        uvicorn workers, so all of them reach this within the same second; on
+        2026-09-27 four of them raced on one ``ALTER TABLE`` and deadlocked,
+        and three crash-looped while the fourth finished. Each migration
+        therefore runs under a transaction-scoped advisory lock, and re-checks
+        whether it is still pending *after* taking it — a worker that queued
+        behind another would otherwise re-apply what that one just committed.
+        """
         await self._ensure_table()
-        applied = await self._applied_versions()
         migrations = self._discover_migrations()
         count = 0
 
         for version, name, module in migrations:
-            if version in applied:
-                continue
-            logger.info(f"Running migration {version}: {name}")
             try:
                 async with self.pool.connection() as conn:
+                    # Released on commit/rollback — no manual unlock needed.
+                    await conn.execute("SELECT pg_advisory_xact_lock(%s)",
+                                       (_MIGRATION_LOCK_KEY,))
+                    cur = await conn.execute(
+                        "SELECT 1 FROM schema_migrations WHERE version = %s",
+                        (version,),
+                    )
+                    if await cur.fetchone():
+                        continue
+
+                    logger.info(f"Running migration {version}: {name}")
                     await module.up(conn)
                     await conn.execute(
                         "INSERT INTO schema_migrations (version, name) VALUES (%s, %s)",

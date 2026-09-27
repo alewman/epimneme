@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Optional
 from epimneme.activity import EventType, get_activity_bus
 from epimneme.core.models import Memory, MemoryKind
 from epimneme.decay import calculate_retrievability
+from epimneme.tenancy import ALL_OWNERS
 
 if TYPE_CHECKING:
     from epimneme.manager import MemoryManager
@@ -196,7 +197,8 @@ class ReflectionEngine:
         config = self.config
 
         # Get projects to process
-        projects = await store.list_projects()
+        # GC is maintenance, not a request: it must see every tenant.
+        projects = await store.list_projects(owner_id=ALL_OWNERS)
         total_consolidated = 0
 
         for project in projects:

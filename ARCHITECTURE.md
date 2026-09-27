@@ -47,14 +47,15 @@ A single `PostgresStore` class wraps a `psycopg` async connection pool and owns 
 
 | Table | Purpose |
 |---|---|
-| `projects` | Tenant namespaces. `persistent_memories` flag exempts all memories from decay/GC. |
+| `owners` | Tenants. Everything below hangs off exactly one. |
+| `projects` | Namespaces *within an owner* — `UNIQUE (owner_id, name)`, so two tenants can both hold `peoplesoft`. `persistent_memories` exempts all its memories from decay/GC. |
 | `sessions` | Agent working sessions — task, summary, handoff notes. |
 | `memories` | The core table. 20+ columns: kind, content, subject, `embedding vector(384)`, `simhash bigint`, decay state, version chain, `pinned`, `obsolete`, tags (JSONB), `content_tsv` (tsvector). |
 | `memory_access` | Access log used by the decay model. |
 | `entities` | Graph nodes — file, module, concept, tool, person, library, config, command. |
 | `relationships` | Directed graph edges. |
 | `memory_entities` | Link table associating memories with the entities they mention. |
-| `api_keys` | Hashed keys only. Prefix is visible for identification. |
+| `api_keys` | Hashed keys only. Prefix is visible for identification. Each key belongs to one owner. |
 | `schema_migrations` | Applied migration versions. |
 
 ### Indexes
@@ -72,6 +73,44 @@ A single `PostgresStore` class wraps a `psycopg` async connection pool and owns 
 2. Decay fields, versioning, simhash
 3. Pinned memories
 4. Per-project persistent flag
+5. Session ordinals
+6. The owner model (see below)
+
+Every worker runs the runner at startup, so each migration is applied under a
+transaction-scoped advisory lock and re-checks `schema_migrations` *after*
+taking it. Without that, four uvicorn workers race on the same `ALTER TABLE`.
+
+### Tenancy (`tenancy.py`)
+
+An **owner** is the tenant boundary. Project names are unique per owner, not
+globally, so the first key to claim `peoplesoft` no longer owns that name for
+the whole installation.
+
+Three rules carry the boundary:
+
+1. **One chokepoint for names.** Everything that says `project="x"` reaches
+   `store.get_project(name, owner_id)`. Scoping that one lookup scopes the
+   namespace.
+2. **No unfiltered branch.** `_project_scope()` always returns a predicate.
+   With no project named it yields `project_id IN (SELECT id FROM projects
+   WHERE owner_id = …)` — "every project *I* own", not every project. The
+   earlier code appended no filter at all when the project was omitted, so a
+   scoped key read the whole installation by leaving the parameter out.
+3. **No NULL project.** Unscoped memories, sessions, and entities live in the
+   owner's `__global__` project rather than at `project_id IS NULL`. Since
+   reads match on project, a NULL row would be readable by nobody — and there
+   is no NULL branch left that could fail open.
+
+The owner travels on a contextvar set where the `AuthContext` is minted
+(`auth._activate`), because threading it through ~40 route signatures leaves
+one missed call site looking exactly like working code. Maintenance callers
+that genuinely span tenants — reflection GC, the admin CLI — pass `ALL_OWNERS`
+explicitly.
+
+`*` in a key's grant list means "every project in my owner", which is why it
+is safe to keep. It is rejected as a project *name*: a project literally called
+`*` was found in production, created when an agent's wildcard grant leaked into
+a claim, and `can_access_project` then read it as full access.
 
 ---
 
@@ -206,3 +245,5 @@ All via environment variables. Defaults live in [`src/engram/core/config.py`](sr
 - Embeddings are currently synchronous per-memory at write time (batched via a thread-pool executor). For very high-throughput workloads, consider pre-batching client-side.
 - HNSW index quality depends on insert order; a periodic `REINDEX` can help after heavy ingestion. See `engram-manage re-embed` for the supported rebuild path.
 - The activity ring buffer is per-process; in a multi-replica deployment, consume the text log instead.
+- Owner scoping is enforced in the store and at the by-id routes, not by Postgres row-level security. A bug in a new query is still a bug; RLS would make it a denied query instead.
+- There is no API for creating owners yet — a second tenant is an `INSERT INTO owners` plus a key minted with that `owner_id`.

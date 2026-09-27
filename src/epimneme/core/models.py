@@ -9,6 +9,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from epimneme.tenancy import current_owner
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -54,6 +56,9 @@ class Project(BaseModel):
     """A registered project / workspace."""
 
     id: str = Field(default_factory=_new_id)
+    # Tenant. Names are unique per owner, and a project created while
+    # serving a request belongs to that request's owner.
+    owner_id: str = Field(default_factory=current_owner)
     name: str
     path: Optional[str] = None
     description: Optional[str] = None

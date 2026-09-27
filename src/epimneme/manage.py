@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from epimneme.core.config import default_config
 from epimneme.stores.postgresql import PostgresStore
+from epimneme.tenancy import ALL_OWNERS
 
 
 async def get_store() -> PostgresStore:
@@ -90,7 +91,7 @@ async def cmd_revoke_key(args: argparse.Namespace) -> None:
 async def cmd_list_projects(args: argparse.Namespace) -> None:
     store = await get_store()
     try:
-        rows = await store.list_projects()
+        rows = await store.list_projects(owner_id=ALL_OWNERS)
         if not rows:
             print("No projects found.")
             return
@@ -123,7 +124,7 @@ async def cmd_stats(args: argparse.Namespace) -> None:
     try:
         mem_count = await store.get_memory_count()
         vec_count = await store.get_vector_count()
-        projects = await store.list_projects()
+        projects = await store.list_projects(owner_id=ALL_OWNERS)
         entities = await store.list_entities()
         keys = await store.list_api_keys()
 

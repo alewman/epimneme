@@ -29,6 +29,7 @@ from epimneme.core.models import (
     Relationship,
     Session,
 )
+from epimneme.migrations.runner import MigrationRunner
 from epimneme.stores.postgresql import PostgresStore
 
 # ── Connection helpers ───────────────────────────────────────────────────────
@@ -76,9 +77,13 @@ async def store():
     finally:
         conn.close()
 
-    # Open store (runs _init_schema → creates all tables + indexes)
+    # Open store (runs _init_schema → creates all tables + indexes), then the
+    # migrations, exactly as server startup does. Without the migrations the
+    # schema under test is not the schema that ships — projects would still
+    # carry the pre-tenancy global UNIQUE(name).
     s = PostgresStore(dsn=_TEST_DSN, embedding_dim=384, min_pool=1, max_pool=4)
     await s.open()
+    await MigrationRunner(s.pool).run_pending()
     yield s
     await s.close()
 

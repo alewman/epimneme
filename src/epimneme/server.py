@@ -69,6 +69,7 @@ from epimneme.bulk_import import (
 )
 from epimneme.manager import POSTFUSION_STAGES, RETRIEVAL_CHANNELS, MemoryManager
 from epimneme.migrations.runner import MigrationRunner
+from epimneme.tenancy import ReservedProjectName
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,29 @@ async def _mcp_enforce_project(ctx: Context, project: Optional[str]) -> AuthCont
     return auth
 
 
+async def _authorized_memory(auth: AuthContext, memory_id: str):
+    """Return the memory, or 404 if this caller has no business with it.
+
+    The by-id routes took an id and acted on it: any authenticated key could
+    edit, delete, or pin any memory in the installation, including another
+    tenant's, just by knowing its id.
+
+    404 rather than 403 throughout — telling a caller that someone else's id
+    exists is itself the leak.
+    """
+    mgr = get_manager()
+    memory = await mgr.store.get_memory(memory_id)
+    if memory is None or not memory.project_id:
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    project = await mgr.store.get_project_by_id(memory.project_id)
+    if project is None or project.owner_id != auth.owner_id:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    if not auth.can_access_project(project.name):
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return memory
+
+
 async def _try_claim_project(auth: AuthContext, project: Optional[str]) -> None:
     """If *auth* can't access *project* yet, auto-claim if it doesn't exist."""
     if not project or auth.can_access_project(project):
@@ -150,14 +174,20 @@ async def _try_claim_project(auth: AuthContext, project: Optional[str]) -> None:
             f"Project '{project}' is already claimed by another key. "
             f"Use a different project name, or ask an admin to grant '{auth.name}' access."
         )
-    if auth.can_claim_project(project) and auth.api_key_id:
-        await mgr.store.add_project_to_api_key(auth.api_key_id, project)
-        auth.projects.append(project)
-        logger.info(f"Key '{auth.name}' claimed project '{project}'")
-    else:
+    if not auth.can_claim_project(project):
         raise ValueError(
-            f"API key '{auth.name}' cannot claim project '{project}'"
+            f"'{project}' is a reserved project name and cannot be claimed"
         )
+    if not auth.api_key_id:
+        raise ValueError(
+            f"'{auth.name}' authenticated without an API key, so it has no "
+            f"grant list to claim '{project}' into"
+        )
+    await mgr.store.add_project_to_api_key(auth.api_key_id, project)
+    auth.projects.append(project)
+    logger.info(
+        f"Key '{auth.name}' claimed project '{project}' in owner {auth.owner_id}"
+    )
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -207,6 +237,16 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
 )
+
+@app.exception_handler(ReservedProjectName)
+async def _reserved_project_name_handler(request, exc: ReservedProjectName):
+    """A refused name is a bad request, not a server fault.
+
+    Registered app-wide because several routes create projects, and they should
+    all answer the same way.
+    """
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 
 # If no explicit origins are configured, fall back to '*' WITHOUT credentials.
 # Browsers reject the '*' + credentials combination, so we mirror spec behaviour.
@@ -366,6 +406,7 @@ async def api_update_memory(
     req: UpdateMemoryRequest,
     auth: AuthContext = Depends(get_auth),
 ):
+    await _authorized_memory(auth, memory_id)
     mgr = get_manager()
     new_version = await mgr.update_memory(
         memory_id=memory_id,
@@ -388,6 +429,7 @@ async def api_memory_versions(
     memory_id: str,
     auth: AuthContext = Depends(get_auth),
 ):
+    await _authorized_memory(auth, memory_id)
     mgr = get_manager()
     versions = await mgr.get_memory_versions(memory_id)
     return {
@@ -521,6 +563,7 @@ async def api_forget(
     hard: bool = False,
     auth: AuthContext = Depends(get_auth),
 ):
+    await _authorized_memory(auth, memory_id)
     mgr = get_manager()
     if hard:
         result = await mgr.hard_forget(memory_id, reason=reason)
@@ -535,6 +578,7 @@ async def api_pin_memory(
     auth: AuthContext = Depends(get_auth),
 ):
     """Pin a memory so it is always included in context and never garbage-collected."""
+    await _authorized_memory(auth, memory_id)
     mgr = get_manager()
     ok = await mgr.store.pin_memory(memory_id)
     if not ok:
@@ -548,6 +592,7 @@ async def api_unpin_memory(
     auth: AuthContext = Depends(get_auth),
 ):
     """Remove the pin from a memory."""
+    await _authorized_memory(auth, memory_id)
     mgr = get_manager()
     ok = await mgr.store.unpin_memory(memory_id)
     if not ok:

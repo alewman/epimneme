@@ -43,13 +43,33 @@ pytest -m integration
 
 ## Database changes
 
-Schema changes ship as numbered migrations in `src/engram/migrations/`:
+Schema changes ship as numbered migrations in `src/epimneme/migrations/`:
 
-1. Create `NNN_short_name.py` with an `async def apply(pool)` function.
+1. Create `NNN_short_name.py` with an `async def up(conn)` function.
 2. Make it idempotent — `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, etc.
 3. Add a test in `tests/test_migrations.py`.
 
-The runner applies pending migrations on server startup and records them in `schema_migrations`.
+The runner applies pending migrations on server startup and records them in `schema_migrations`. Every worker process runs it, so it serialises on an advisory lock — you do not need to add your own, but do assume your migration may be started by four processes at once.
+
+## Running the integration tests
+
+`tests/test_integration.py` and `tests/test_tenancy.py` need a real PostgreSQL with `pgvector`; they skip themselves when one is unreachable, so a green local run does **not** mean they ran. Check for `skipped` in the summary.
+
+Against a Compose deployment whose database sits on an internal network, publish it to localhost for the duration:
+
+```sh
+docker run -d --name pgfwd -p 127.0.0.1:55432:5432 alpine/socat \
+    tcp-listen:5432,fork,reuseaddr tcp-connect:epimneme-db:5432
+docker network connect <project>_engram_internal pgfwd
+
+EPIMNEME_PG_HOST=127.0.0.1 EPIMNEME_PG_PORT=55432 \
+EPIMNEME_PG_USER=engram EPIMNEME_PG_PASSWORD="$PGPASS" \
+    pytest tests/ -q
+
+docker rm -f pgfwd
+```
+
+Each module creates and drops its own database, so this never touches your real data — but point it at a development instance anyway.
 
 ## Security
 

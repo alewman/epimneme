@@ -71,6 +71,9 @@ class TestMigrationRunner:
 
         cursor = AsyncMock()
         cursor.fetchall.return_value = []
+        # The runner re-checks schema_migrations under the advisory lock;
+        # None means this version has not been applied yet.
+        cursor.fetchone.return_value = None
         conn.execute.return_value = cursor
 
         # Create a fake migration module
@@ -85,3 +88,28 @@ class TestMigrationRunner:
         count = await runner.run_pending()
         assert count == 1
         fake_module.up.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_already_applied_migration_is_not_reapplied(self):
+        """The case that crash-looped three of four workers on 2026-09-27.
+
+        A worker that blocks on the advisory lock resumes with a stale idea of
+        what is pending, so the check has to happen after the lock is held.
+        """
+        pool, conn = self._mock_pool()
+
+        cursor = AsyncMock()
+        cursor.fetchall.return_value = []
+        cursor.fetchone.return_value = {"?column?": 1}  # already recorded
+        conn.execute.return_value = cursor
+
+        fake_module = MagicMock()
+        fake_module.up = AsyncMock()
+
+        runner = MigrationRunner(pool)
+        runner._discover_migrations = MagicMock(
+            return_value=[(1, "001_initial", fake_module)]
+        )
+
+        assert await runner.run_pending() == 0
+        fake_module.up.assert_not_awaited()

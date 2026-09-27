@@ -48,12 +48,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from epimneme.tenancy import DEFAULT_OWNER_ID
+
 logger = logging.getLogger(__name__)
 
 # ── Format version ───────────────────────────────────────────────────────────
 # Bump this when TABLE_COLUMNS or TABLE_ORDER change.  Then add an upgrade
 # function in _UPGRADE_CHAIN so old backups can be migrated forward.
-CURRENT_FORMAT_VERSION = 2
+CURRENT_FORMAT_VERSION = 3
 
 # Tables in FK-safe insertion order
 TABLE_ORDER = [
@@ -69,7 +71,7 @@ TABLE_ORDER = [
 # Columns to export per table (explicit to avoid leaking internal cols)
 TABLE_COLUMNS: dict[str, list[str]] = {
     "projects": [
-        "id", "name", "path", "description", "created_at", "updated_at",
+        "id", "owner_id", "name", "path", "description", "created_at", "updated_at",
     ],
     "sessions": [
         "id", "project_id", "task", "started_at", "ended_at", "summary", "handoff",
@@ -144,11 +146,32 @@ def _upgrade_v1_to_v2(archive: dict) -> dict:
     return archive
 
 
+def _upgrade_v2_to_v3(archive: dict) -> dict:
+    """Upgrade a format_version=2 archive to version 3.
+
+    Version 2 → 3 (the owner model): projects gained ``owner_id``. A v2 archive
+    predates tenants, so every project in it belongs to the default owner —
+    left as None here and resolved by the restore SQL, which keeps the decision
+    in one place.
+    """
+    for row in archive.get("tables", {}).get("projects", []):
+        row.setdefault("owner_id", None)
+
+    archive["format_version"] = 3
+    archive.setdefault("metadata", {})
+    archive["metadata"].setdefault("upgrades_applied", [])
+    archive["metadata"]["upgrades_applied"].append(
+        {"from": 2, "to": 3, "note": "Added owner_id to projects"}
+    )
+    logger.info("Backup upgrade: v2 → v3 (projects gained owner_id)")
+    return archive
+
+
 # Registry: source_version → upgrade function.  Each function takes and returns
 # the archive dict, bumping format_version from N to N+1.
 _UPGRADE_CHAIN: dict[int, Callable[[dict], dict]] = {
     1: _upgrade_v1_to_v2,
-    # Future: 2: _upgrade_v2_to_v3, etc.
+    2: _upgrade_v2_to_v3,
 }
 
 
@@ -489,9 +512,13 @@ def rotate_backups(
 # so restore is idempotent (re-running won't fail on existing rows).
 
 _RESTORE_SQL: dict[str, str] = {
+    # owner_id is NOT NULL since the owner model, and a backup taken before it
+    # has no such column — COALESCE to the default owner so old archives still
+    # restore into the tenant everything pre-tenancy already belonged to.
     "projects": """
-        INSERT INTO projects (id, name, path, description, created_at, updated_at)
-        VALUES (%(id)s, %(name)s, %(path)s, %(description)s,
+        INSERT INTO projects (id, owner_id, name, path, description, created_at, updated_at)
+        VALUES (%(id)s, COALESCE(%(owner_id)s, '""" + DEFAULT_OWNER_ID + """'),
+                %(name)s, %(path)s, %(description)s,
                 %(created_at)s, %(updated_at)s)
         ON CONFLICT (id) DO UPDATE SET
             name=EXCLUDED.name, path=EXCLUDED.path, description=EXCLUDED.description,

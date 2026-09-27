@@ -34,6 +34,16 @@ from epimneme.core.models import (
     Relationship,
     Session,
 )
+from epimneme.tenancy import (
+    ALL_OWNERS,
+    DEFAULT_OWNER_ID,
+    DEFAULT_OWNER_NAME,
+    GLOBAL_PROJECT_NAME,
+    LEGACY_GLOBAL_PROJECT_ID,
+    current_owner,
+    global_project_id,
+    is_global_project_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +95,31 @@ class PostgresStore:
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
+            # ── Owners (tenants) ──
+            # The tenant boundary: project names are unique per owner, not
+            # globally. Migration 006 swaps the index and adopts existing rows;
+            # this only has to make the shape exist for a fresh database.
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS owners (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL UNIQUE,
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            await conn.execute(
+                "INSERT INTO owners (id, name) VALUES (%s, %s) "
+                "ON CONFLICT (id) DO NOTHING",
+                (DEFAULT_OWNER_ID, DEFAULT_OWNER_NAME),
+            )
+
             # ── Projects ──
+            # `name UNIQUE` here is the pre-tenancy shape, kept so a fresh
+            # database is never briefly unconstrained. Migration 006 replaces
+            # it with UNIQUE (owner_id, name).
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS projects (
                     id          TEXT PRIMARY KEY,
+                    owner_id    TEXT,
                     name        TEXT NOT NULL UNIQUE,
                     path        TEXT,
                     description TEXT,
@@ -172,6 +203,7 @@ class PostgresStore:
             # ── Add columns for existing projects table (idempotent) ──
             for col_name, col_type in [
                 ("persistent_memories", "BOOLEAN DEFAULT FALSE"),
+                ("owner_id", "TEXT"),
             ]:
                 if not _IDENT_RE.match(col_name) or not _TYPE_RE.match(col_type):
                     raise ValueError(f"Invalid column definition: {col_name} {col_type}")
@@ -272,12 +304,29 @@ class PostgresStore:
                     name        TEXT NOT NULL UNIQUE,
                     role        TEXT NOT NULL DEFAULT 'agent',
                     projects    TEXT[] NOT NULL DEFAULT '{}',
+                    owner_id    TEXT,
                     created_at  TIMESTAMPTZ DEFAULT NOW(),
                     expires_at  TIMESTAMPTZ,
                     revoked_at  TIMESTAMPTZ,
                     last_used   TIMESTAMPTZ
                 )
             """)
+
+            # ── Add columns for existing api_keys table (idempotent) ──
+            for col_name, col_type in [
+                ("owner_id", "TEXT"),
+            ]:
+                if not _IDENT_RE.match(col_name) or not _TYPE_RE.match(col_type):
+                    raise ValueError(f"Invalid column definition: {col_name} {col_type}")
+                cur = await conn.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = %s AND column_name = %s",
+                    ("api_keys", col_name),
+                )
+                if not (await cur.fetchone()):
+                    await conn.execute(
+                        f"ALTER TABLE api_keys ADD COLUMN {col_name} {col_type}"
+                    )
 
             # ── Schema migrations tracking ──
             await conn.execute("""
@@ -313,6 +362,7 @@ class PostgresStore:
                 "CREATE INDEX IF NOT EXISTS idx_memory_access_memory ON memory_access(memory_id)",
                 "CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)",
+                "CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id)",
             ]
             for ddl in idx:
                 await conn.execute(ddl)
@@ -320,29 +370,86 @@ class PostgresStore:
             await conn.commit()
             logger.info("PostgreSQL schema initialized")
 
+    # ── Tenant scoping ───────────────────────────────────────────────────
+
+    def _global_pid(self, owner_id: Optional[str] = None) -> str:
+        """The caller's ``__global__`` project id — where unscoped rows live."""
+        return global_project_id(owner_id or current_owner())
+
+    def _project_scope(
+        self,
+        project_id: Optional[str],
+        column: str = "project_id",
+        owner_id: Optional[str] = None,
+    ) -> tuple[str, list]:
+        """SQL restricting rows to one project, or to the caller's whole tenant.
+
+        Before owners existed, ``project_id=None`` appended *no filter at all*,
+        so a key scoped to one project read every project in the installation
+        just by omitting the parameter. That is why this returns a predicate
+        unconditionally: there is no unfiltered branch left to fall into.
+
+        "No project" now means "every project I own" — the same rows on a
+        single-tenant install, and the tenant boundary on any other.
+        """
+        if project_id:
+            return f"{column} = %s", [project_id]
+        return (
+            f"{column} IN (SELECT id FROM projects WHERE owner_id = %s)",
+            [owner_id or current_owner()],
+        )
+
     # ── Projects ─────────────────────────────────────────────────────────
 
     async def create_project(self, project: Project) -> Project:
+        """Insert a project, or return the owner's existing one of that name.
+
+        Names collide only within an owner, so two tenants can both hold
+        ``peoplesoft``. If the name is already taken in this owner, the caller
+        gets back the row that exists rather than a duplicate with a new id —
+        the previous behaviour, now scoped.
+        """
+        if not project.owner_id:
+            project.owner_id = current_owner()
         async with self.pool.connection() as conn:
             await conn.execute(
-                """INSERT INTO projects (id, name, path, description, persistent_memories, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (name) DO NOTHING""",
-                (project.id, project.name, project.path, project.description,
-                 project.persistent_memories, project.created_at, project.updated_at),
+                """INSERT INTO projects (id, owner_id, name, path, description,
+                                         persistent_memories, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (owner_id, name) DO NOTHING""",
+                (project.id, project.owner_id, project.name, project.path,
+                 project.description, project.persistent_memories,
+                 project.created_at, project.updated_at),
             )
             await conn.commit()
-        return project
+            cur = await conn.execute(
+                "SELECT * FROM projects WHERE owner_id = %s AND name = %s",
+                (project.owner_id, project.name),
+            )
+            row = await cur.fetchone()
+        return self._row_to_project(row) if row else project
 
-    async def get_project(self, name: str) -> Optional[Project]:
+    async def get_project(
+        self, name: str, owner_id: Optional[str] = None
+    ) -> Optional[Project]:
+        """Resolve a project name *within an owner*.
+
+        This is the chokepoint the whole tenant boundary rests on: every
+        caller that says ``project="peoplesoft"`` reaches the store here, so
+        scoping this one lookup scopes the name space itself.
+        """
+        owner_id = owner_id or current_owner()
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT * FROM projects WHERE name = %s", (name,)
+                "SELECT * FROM projects WHERE owner_id = %s AND name = %s",
+                (owner_id, name),
             )
             row = await cur.fetchone()
         return self._row_to_project(row) if row else None
 
     async def get_project_by_id(self, project_id: str) -> Optional[Project]:
+        """Look up by id. Ids are globally unique, so this is owner-agnostic;
+        callers that hand an id to a user must check ``project.owner_id``."""
         async with self.pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT * FROM projects WHERE id = %s", (project_id,)
@@ -350,31 +457,94 @@ class PostgresStore:
             row = await cur.fetchone()
         return self._row_to_project(row) if row else None
 
-    async def list_projects(self) -> list[Project]:
+    async def list_projects(
+        self, owner_id: Optional[str] = None, include_global: bool = False
+    ) -> list[Project]:
+        """List the served owner's projects.
+
+        Pass ``ALL_OWNERS`` to cross the tenant boundary — reflection GC and
+        the admin CLI do; nothing serving a request should.
+
+        The ``__global__`` project is where unscoped memories are filed; it is
+        storage, not something anyone named, so it stays out of listings unless
+        ``include_global``.
+        """
+        owner_id = owner_id or current_owner()
+        hide = "" if include_global else f" AND name <> '{GLOBAL_PROJECT_NAME}'"
         async with self.pool.connection() as conn:
-            cur = await conn.execute(
-                "SELECT * FROM projects ORDER BY updated_at DESC"
-            )
+            if owner_id == ALL_OWNERS:
+                cur = await conn.execute(
+                    f"SELECT * FROM projects WHERE TRUE{hide} "
+                    "ORDER BY updated_at DESC"
+                )
+            else:
+                cur = await conn.execute(
+                    f"SELECT * FROM projects WHERE owner_id = %s{hide} "
+                    "ORDER BY updated_at DESC",
+                    (owner_id,),
+                )
             rows = await cur.fetchall()
         return [self._row_to_project(r) for r in rows]
 
-    async def count_projects(self) -> int:
-        """Return total number of projects."""
+    async def count_projects(
+        self, owner_id: Optional[str] = None, include_global: bool = False
+    ) -> int:
+        """Count the served owner's projects, or ``ALL_OWNERS`` for every one.
+
+        Excludes ``__global__`` for the same reason :meth:`list_projects` does.
+        """
+        owner_id = owner_id or current_owner()
+        hide = "" if include_global else f" AND name <> '{GLOBAL_PROJECT_NAME}'"
         async with self.pool.connection() as conn:
-            cur = await conn.execute("SELECT COUNT(*) AS cnt FROM projects")
+            if owner_id == ALL_OWNERS:
+                cur = await conn.execute(
+                    f"SELECT COUNT(*) AS cnt FROM projects WHERE TRUE{hide}"
+                )
+            else:
+                cur = await conn.execute(
+                    f"SELECT COUNT(*) AS cnt FROM projects WHERE owner_id = %s{hide}",
+                    (owner_id,),
+                )
             row = await cur.fetchone()
         return row["cnt"] if row else 0
 
-    async def set_project_persistent(self, project_name: str, enabled: bool) -> bool:
-        """Enable or disable persistent memories for a project."""
+    async def set_project_persistent(
+        self, project_name: str, enabled: bool, owner_id: Optional[str] = None
+    ) -> bool:
+        """Enable or disable persistent memories for one owner's project."""
+        owner_id = owner_id or current_owner()
         async with self.pool.connection() as conn:
             cur = await conn.execute(
                 """UPDATE projects SET persistent_memories = %s, updated_at = NOW()
-                   WHERE name = %s""",
-                (enabled, project_name),
+                   WHERE owner_id = %s AND name = %s""",
+                (enabled, owner_id, project_name),
             )
             await conn.commit()
             return cur.rowcount > 0
+
+    async def ensure_global_project(self, owner_id: Optional[str] = None) -> str:
+        """Return the id of an owner's ``__global__`` project, creating it.
+
+        Memories with no project live here rather than at ``project_id IS
+        NULL``, so that "unscoped" is still inside exactly one tenant.
+
+        The id is derived, so this costs one idempotent INSERT and no lookup.
+        It is deliberately not cached: a cached "already exists" turns a
+        missing row into a foreign-key error at write time, which is a worse
+        trade than one round trip on a path that already does several.
+        """
+        owner_id = owner_id or current_owner()
+        gid = global_project_id(owner_id)
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                """INSERT INTO projects (id, owner_id, name, description)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (owner_id, name) DO NOTHING""",
+                (gid, owner_id, GLOBAL_PROJECT_NAME,
+                 "Memories not scoped to any project"),
+            )
+            await conn.commit()
+        return gid
 
     async def get_persistent_project_ids(self) -> set[str]:
         """Return the set of project IDs that have persistent_memories enabled."""
@@ -388,6 +558,10 @@ class PostgresStore:
     # ── Sessions ─────────────────────────────────────────────────────────
 
     async def create_session(self, session: Session) -> Session:
+        # Same rule as store_memory: no project means the owner's global one,
+        # never NULL, so the session stays readable.
+        if not session.project_id:
+            session.project_id = await self.ensure_global_project()
         async with self.pool.connection() as conn:
             # Assign a per-project monotonic ordinal so the retrieval layer
             # can apply session-recency boosts without relying on timestamps.
@@ -448,33 +622,24 @@ class PostgresStore:
             await conn.commit()
 
     async def get_last_session(self, project_id: Optional[str] = None) -> Optional[Session]:
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
-            if project_id:
-                cur = await conn.execute(
-                    "SELECT * FROM sessions WHERE project_id = %s ORDER BY started_at DESC LIMIT 1",
-                    (project_id,),
-                )
-            else:
-                cur = await conn.execute(
-                    "SELECT * FROM sessions ORDER BY started_at DESC LIMIT 1"
-                )
+            cur = await conn.execute(
+                f"SELECT * FROM sessions WHERE {scope} ORDER BY started_at DESC LIMIT 1",
+                params,
+            )
             row = await cur.fetchone()
         return self._row_to_session(row) if row else None
 
     async def get_previous_session(self, project_id: Optional[str], exclude_id: str) -> Optional[Session]:
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
-            if project_id:
-                cur = await conn.execute(
-                    """SELECT * FROM sessions
-                       WHERE project_id = %s AND id != %s
-                       ORDER BY started_at DESC LIMIT 1""",
-                    (project_id, exclude_id),
-                )
-            else:
-                cur = await conn.execute(
-                    "SELECT * FROM sessions WHERE id != %s ORDER BY started_at DESC LIMIT 1",
-                    (exclude_id,),
-                )
+            cur = await conn.execute(
+                f"""SELECT * FROM sessions
+                    WHERE {scope} AND id != %s
+                    ORDER BY started_at DESC LIMIT 1""",
+                [*params, exclude_id],
+            )
             row = await cur.fetchone()
         return self._row_to_session(row) if row else None
 
@@ -509,7 +674,15 @@ class PostgresStore:
     # ── Memories ─────────────────────────────────────────────────────────
 
     async def store_memory(self, memory: Memory, embedding: Optional[list[float]] = None) -> Memory:
-        """Store a memory with optional embedding vector."""
+        """Store a memory with optional embedding vector.
+
+        A memory with no project is filed under the caller's ``__global__``
+        project rather than written with ``project_id = NULL``. Since reads are
+        scoped to an owner's projects, a NULL row would be readable by nobody —
+        stored successfully and then invisible.
+        """
+        if not memory.project_id:
+            memory.project_id = await self.ensure_global_project()
         async with self.pool.connection() as conn:
             if memory.supersedes:
                 await conn.execute(
@@ -593,18 +766,13 @@ class PostgresStore:
 
     async def get_pinned_memories(self, project_id: Optional[str] = None) -> list[Memory]:
         """Return all pinned, non-obsolete memories, optionally scoped to a project."""
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
-            if project_id:
-                cur = await conn.execute(
-                    "SELECT * FROM memories WHERE pinned = TRUE AND obsolete = FALSE "
-                    "AND project_id = %s ORDER BY created_at",
-                    (project_id,),
-                )
-            else:
-                cur = await conn.execute(
-                    "SELECT * FROM memories WHERE pinned = TRUE AND obsolete = FALSE "
-                    "ORDER BY created_at",
-                )
+            cur = await conn.execute(
+                "SELECT * FROM memories WHERE pinned = TRUE AND obsolete = FALSE "
+                f"AND {scope} ORDER BY created_at",
+                params,
+            )
             rows = await cur.fetchall()
         return [self._row_to_memory(r) for r in rows]
 
@@ -736,14 +904,22 @@ class PostgresStore:
             await conn.commit()
             return result.rowcount > 0
 
-    async def purge_obsolete_memories(self) -> int:
-        """Permanently delete all obsolete memories. Returns count deleted."""
+    async def purge_obsolete_memories(self, project_id: Optional[str] = None) -> int:
+        """Permanently delete the caller's obsolete memories.
+
+        Scoped to the owner: an admin purging their own tenant must not delete
+        another tenant's rows, and this is irreversible.
+        """
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
             await conn.execute(
-                "DELETE FROM memory_entities WHERE memory_id IN (SELECT id FROM memories WHERE obsolete = TRUE)"
+                "DELETE FROM memory_entities WHERE memory_id IN "
+                f"(SELECT id FROM memories WHERE obsolete = TRUE AND {scope})",
+                params,
             )
             result = await conn.execute(
-                "DELETE FROM memories WHERE obsolete = TRUE"
+                f"DELETE FROM memories WHERE obsolete = TRUE AND {scope}",
+                params,
             )
             await conn.commit()
             return result.rowcount
@@ -761,9 +937,9 @@ class PostgresStore:
         conditions = ["NOT obsolete", "embedding IS NOT NULL"]
         params: list = []
 
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind)
@@ -808,9 +984,9 @@ class PostgresStore:
         conditions = ["NOT obsolete", "embedding IS NOT NULL"]
         params: list = []
 
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
 
         where = " AND ".join(conditions)
 
@@ -856,9 +1032,9 @@ class PostgresStore:
         ]
         params: list = [kind]
 
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
 
         where = " AND ".join(conditions)
 
@@ -897,9 +1073,9 @@ class PostgresStore:
         conditions = ["NOT obsolete", "content_tsv @@ websearch_to_tsquery('english', %s)"]
         params: list = [query]
 
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind.value)
@@ -946,9 +1122,9 @@ class PostgresStore:
         conditions = ["NOT obsolete", "similarity(content, %s) > 0.1"]
         params: list = [query]
 
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind.value)
@@ -986,9 +1162,9 @@ class PostgresStore:
     ) -> list[Memory]:
         conditions = ["NOT obsolete", "kind = %s"]
         params: list = [kind.value]
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         where = " AND ".join(conditions)
         params.append(limit)
         async with self.pool.connection() as conn:
@@ -1000,23 +1176,22 @@ class PostgresStore:
         return [self._row_to_memory(r) for r in rows]
 
     async def get_memory_count(self, project_id: Optional[str] = None) -> int:
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
-            if project_id:
-                cur = await conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM memories WHERE NOT obsolete AND project_id = %s",
-                    (project_id,),
-                )
-            else:
-                cur = await conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM memories WHERE NOT obsolete"
-                )
+            cur = await conn.execute(
+                f"SELECT COUNT(*) AS cnt FROM memories WHERE NOT obsolete AND {scope}",
+                params,
+            )
             row = await cur.fetchone()
         return row["cnt"] if row else 0
 
-    async def get_vector_count(self) -> int:
+    async def get_vector_count(self, project_id: Optional[str] = None) -> int:
+        scope, params = self._project_scope(project_id)
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT COUNT(*) AS cnt FROM memories WHERE embedding IS NOT NULL AND NOT obsolete"
+                "SELECT COUNT(*) AS cnt FROM memories "
+                f"WHERE embedding IS NOT NULL AND NOT obsolete AND {scope}",
+                params,
             )
             row = await cur.fetchone()
         return row["cnt"] if row else 0
@@ -1073,9 +1248,9 @@ class PostgresStore:
                     "bit_count((simhash # %s)::bit(64)) <= %s",
                 ]
                 params: list = [simhash, threshold]
-                if project_id:
-                    conditions.append("project_id = %s")
-                    params.append(project_id)
+                _scope_sql, _scope_params = self._project_scope(project_id)
+                conditions.append(_scope_sql)
+                params.extend(_scope_params)
                 where = " AND ".join(conditions)
                 cur = await conn.execute(
                     f"SELECT * FROM memories WHERE {where} LIMIT 10",
@@ -1087,9 +1262,9 @@ class PostgresStore:
                 # Fallback: fetch recent memories and filter in Python
                 conditions = ["NOT obsolete", "simhash IS NOT NULL"]
                 params = []
-                if project_id:
-                    conditions.append("project_id = %s")
-                    params.append(project_id)
+                _scope_sql, _scope_params = self._project_scope(project_id)
+                conditions.append(_scope_sql)
+                params.extend(_scope_params)
                 where = " AND ".join(conditions)
                 cur = await conn.execute(
                     f"SELECT * FROM memories WHERE {where} ORDER BY created_at DESC LIMIT 1000",
@@ -1115,20 +1290,23 @@ class PostgresStore:
         if not entity_names:
             return 0
 
-        # Batch-resolve existing entities
-        proj_key = project_id or "__global__"
+        # Batch-resolve existing entities. A project sees its own entities
+        # plus the owner's global ones; with no project, the owner's global
+        # ones alone — never another tenant's.
+        gid = await self.ensure_global_project()
+        proj_key = project_id or gid
         async with self.pool.connection() as conn:
             if project_id:
                 cur = await conn.execute(
                     """SELECT * FROM entities
                        WHERE name = ANY(%s)
-                         AND (project_id = %s OR project_id = '__global__')""",
-                    (entity_names, project_id),
+                         AND (project_id = %s OR project_id = %s)""",
+                    (entity_names, project_id, gid),
                 )
             else:
                 cur = await conn.execute(
-                    "SELECT * FROM entities WHERE name = ANY(%s)",
-                    (entity_names,),
+                    "SELECT * FROM entities WHERE name = ANY(%s) AND project_id = %s",
+                    (entity_names, gid),
                 )
             existing_rows = await cur.fetchall()
 
@@ -1211,10 +1389,14 @@ class PostgresStore:
     # ── Entities (Graph) ─────────────────────────────────────────────────
 
     async def track_entity(self, entity: Entity) -> Entity:
+        # Resolved before the connection is taken: ensure_global_project opens
+        # one of its own, and acquiring a second while holding the first
+        # exhausts the pool.
+        proj_key = entity.project_id or await self.ensure_global_project()
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT * FROM entities WHERE name = %s AND COALESCE(project_id, '__global__') = %s",
-                (entity.name, entity.project_id or "__global__"),
+                "SELECT * FROM entities WHERE name = %s AND project_id = %s",
+                (entity.name, proj_key),
             )
             existing = await cur.fetchone()
 
@@ -1235,23 +1417,25 @@ class PostgresStore:
                 """INSERT INTO entities (id, name, kind, project_id, properties, created_at)
                    VALUES (%s, %s, %s, %s, %s::jsonb, %s)""",
                 (entity.id, entity.name, entity.kind.value,
-                 entity.project_id or "__global__",
+                 proj_key,
                  json.dumps(entity.properties), entity.created_at),
             )
             await conn.commit()
         return entity
 
     async def get_entity(self, name: str, project_id: Optional[str] = None) -> Optional[Entity]:
+        gid = self._global_pid()
         async with self.pool.connection() as conn:
             if project_id:
                 cur = await conn.execute(
                     """SELECT * FROM entities
-                       WHERE name = %s AND (project_id = %s OR project_id = '__global__')""",
-                    (name, project_id),
+                       WHERE name = %s AND (project_id = %s OR project_id = %s)""",
+                    (name, project_id, gid),
                 )
             else:
                 cur = await conn.execute(
-                    "SELECT * FROM entities WHERE name = %s", (name,)
+                    "SELECT * FROM entities WHERE name = %s AND project_id = %s",
+                    (name, gid),
                 )
             row = await cur.fetchone()
         return self._row_to_entity(row) if row else None
@@ -1265,9 +1449,9 @@ class PostgresStore:
     ) -> list[Entity]:
         conditions: list[str] = []
         params: list = []
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind.value)
@@ -1289,9 +1473,9 @@ class PostgresStore:
         """Return total count of entities matching filters."""
         conditions: list[str] = []
         params: list = []
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind.value)
@@ -1447,9 +1631,16 @@ class PostgresStore:
         role: str = "agent",
         projects: Optional[list[str]] = None,
         expires_in_days: Optional[int] = None,
+        owner_id: Optional[str] = None,
     ) -> str:
-        """Create a new API key. Returns the raw key (only shown once)."""
+        """Create a new API key. Returns the raw key (only shown once).
+
+        The key belongs to ``owner_id``, and every project name it later
+        resolves is looked up inside that owner. Key *names* stay globally
+        unique so admin operations that take a name are unambiguous.
+        """
         import uuid
+        owner_id = owner_id or current_owner()
         raw_key = f"engram_{secrets.token_urlsafe(32)}"
         key_hash = self.hash_key(raw_key)
         key_prefix = raw_key[:12]
@@ -1463,13 +1654,18 @@ class PostgresStore:
 
         async with self.pool.connection() as conn:
             await conn.execute(
-                """INSERT INTO api_keys (id, key_hash, key_prefix, name, role, projects, expires_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (key_id, key_hash, key_prefix, name, role, project_list, expires_at),
+                """INSERT INTO api_keys (id, key_hash, key_prefix, name, role,
+                                        projects, expires_at, owner_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (key_id, key_hash, key_prefix, name, role, project_list,
+                 expires_at, owner_id),
             )
             await conn.commit()
 
-        logger.info(f"Created API key: name={name}, role={role}, prefix={key_prefix}")
+        logger.info(
+            f"Created API key: name={name}, role={role}, "
+            f"prefix={key_prefix}, owner={owner_id}"
+        )
         return raw_key
 
     async def validate_api_key(self, raw_key: str) -> Optional[dict]:
@@ -1480,7 +1676,7 @@ class PostgresStore:
                    WHERE key_hash = %s
                      AND revoked_at IS NULL
                      AND (expires_at IS NULL OR expires_at > NOW())
-                   RETURNING id, name, role, projects""",
+                   RETURNING id, name, role, projects, owner_id""",
                 (key_hash,),
             )
             row = await cur.fetchone()
@@ -1494,15 +1690,23 @@ class PostgresStore:
             "name": row["name"],
             "role": row["role"],
             "projects": row["projects"],
+            "owner_id": row.get("owner_id") or DEFAULT_OWNER_ID,
         }
 
-    async def list_api_keys(self) -> list[dict]:
+    async def list_api_keys(self, owner_id: Optional[str] = None) -> list[dict]:
+        """List the served owner's API keys, or ``ALL_OWNERS`` for every one."""
+        owner_id = owner_id or current_owner()
         async with self.pool.connection() as conn:
-            cur = await conn.execute(
-                """SELECT id, key_prefix, name, role, projects,
-                          created_at, expires_at, revoked_at, last_used
-                   FROM api_keys ORDER BY created_at DESC"""
-            )
+            sql = """SELECT id, key_prefix, name, role, projects, owner_id,
+                            created_at, expires_at, revoked_at, last_used
+                     FROM api_keys"""
+            if owner_id == ALL_OWNERS:
+                cur = await conn.execute(sql + " ORDER BY created_at DESC")
+            else:
+                cur = await conn.execute(
+                    sql + " WHERE owner_id = %s ORDER BY created_at DESC",
+                    (owner_id,),
+                )
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
@@ -1523,7 +1727,8 @@ class PostgresStore:
         # Read current key metadata
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT role, projects FROM api_keys WHERE name = %s AND revoked_at IS NULL",
+                "SELECT role, projects, owner_id FROM api_keys "
+                "WHERE name = %s AND revoked_at IS NULL",
                 (name,),
             )
             row = await cur.fetchone()
@@ -1531,12 +1736,15 @@ class PostgresStore:
             return None
 
         role, projects = row["role"], row["projects"]
+        owner_id = row.get("owner_id") or DEFAULT_OWNER_ID
         # Hard-delete the old key so the UNIQUE(name) constraint allows re-creation.
         # (revoke_api_key only sets revoked_at, leaving the row with the same name.)
         async with self.pool.connection() as conn:
             await conn.execute("DELETE FROM api_keys WHERE name = %s", (name,))
             await conn.commit()
-        return await self.create_api_key(name=name, role=role, projects=projects)
+        return await self.create_api_key(
+            name=name, role=role, projects=projects, owner_id=owner_id
+        )
 
     async def add_project_to_api_key(self, key_id: str, project_name: str) -> None:
         async with self.pool.connection() as conn:
@@ -1567,6 +1775,11 @@ class PostgresStore:
             # Admin keys always get wildcard
             if new_role == "admin":
                 new_projects = ["*"]
+            elif row["role"] == "admin":
+                # Demotion. The wildcard was granted by the admin role, so it
+                # goes with it — otherwise the key keeps admin's reach under an
+                # agent's label, and nothing in the API would show it.
+                new_projects = [p for p in new_projects if p != "*"]
             await conn.execute(
                 "UPDATE api_keys SET role = %s, projects = %s WHERE id = %s",
                 (new_role, new_projects, row["id"]),
@@ -1596,9 +1809,9 @@ class PostgresStore:
         """
         conditions = ["NOT obsolete"]
         params: list = []
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         if kind:
             conditions.append("kind = %s")
             params.append(kind)
@@ -1626,9 +1839,9 @@ class PostgresStore:
         params: list = []
         if not include_obsolete:
             conditions.append("NOT obsolete")
-        if project_id:
-            conditions.append("project_id = %s")
-            params.append(project_id)
+        _scope_sql, _scope_params = self._project_scope(project_id)
+        conditions.append(_scope_sql)
+        params.extend(_scope_params)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
         async with self.pool.connection() as conn:
@@ -1850,18 +2063,26 @@ class PostgresStore:
 
     async def get_detailed_stats(self) -> dict:
         """Detailed statistics for the dashboard (single-query counts)."""
+        # Scoped to the owner being served — the dashboard reports what this
+        # tenant has, not what the installation has. __global__ is excluded
+        # from the project count for the same reason list_projects hides it.
+        owner = current_owner()
+        scope, scope_params = self._project_scope(None, owner_id=owner)
         async with self.pool.connection() as conn:
             # Consolidate 7 separate COUNTs into one query
-            cur = await conn.execute("""
+            cur = await conn.execute(f"""
                 SELECT
-                    (SELECT COUNT(*) FROM memories WHERE NOT obsolete) AS total_memories,
-                    (SELECT COUNT(*) FROM memories WHERE NOT obsolete AND embedding IS NOT NULL) AS total_vectors,
-                    (SELECT COUNT(*) FROM entities) AS total_entities,
-                    (SELECT COUNT(*) FROM projects) AS total_projects,
-                    (SELECT COUNT(*) FROM sessions) AS total_sessions,
-                    (SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL) AS active_api_keys,
-                    (SELECT COUNT(*) FROM memories WHERE obsolete) AS obsolete_memories
-            """)
+                    (SELECT COUNT(*) FROM memories WHERE NOT obsolete AND {scope}) AS total_memories,
+                    (SELECT COUNT(*) FROM memories WHERE NOT obsolete AND embedding IS NOT NULL AND {scope}) AS total_vectors,
+                    (SELECT COUNT(*) FROM entities WHERE {scope}) AS total_entities,
+                    (SELECT COUNT(*) FROM projects
+                      WHERE owner_id = %s AND name <> '{GLOBAL_PROJECT_NAME}') AS total_projects,
+                    (SELECT COUNT(*) FROM sessions WHERE {scope}) AS total_sessions,
+                    (SELECT COUNT(*) FROM api_keys
+                      WHERE revoked_at IS NULL AND owner_id = %s) AS active_api_keys,
+                    (SELECT COUNT(*) FROM memories WHERE obsolete AND {scope}) AS obsolete_memories
+            """, [*scope_params, *scope_params, *scope_params, owner,
+                  *scope_params, owner, *scope_params])
             counts = await cur.fetchone()
             stats = {
                 "total_memories": counts["total_memories"],
@@ -2021,9 +2242,9 @@ class PostgresStore:
         Optimisation: uses a single DB connection for all KNN probes instead
         of opening a new connection per pivot.
         """
-        proj_filter = "AND project_id = %s" if project_id else "AND project_id IS NULL"
-        proj_filter_q = "AND m.project_id = %s" if project_id else "AND m.project_id IS NULL"
-        proj_param = [project_id] if project_id else []
+        _scope, proj_param = self._project_scope(project_id)
+        proj_filter = f"AND {_scope}"
+        proj_filter_q = f"AND {self._project_scope(project_id, column='m.project_id')[0]}"
 
         async with self.pool.connection() as conn:
             # Get candidate memories with embeddings
@@ -2212,6 +2433,7 @@ class PostgresStore:
     def _row_to_project(row: dict) -> Project:
         return Project(
             id=row["id"],
+            owner_id=row.get("owner_id") or DEFAULT_OWNER_ID,
             name=row["name"],
             path=row.get("path"),
             description=row.get("description"),
@@ -2274,8 +2496,10 @@ class PostgresStore:
             except (json.JSONDecodeError, TypeError):
                 props = {}
 
+        # The global project is how "unscoped" is stored; callers still see
+        # None, which is what the Entity model has always meant by it.
         project_id = row.get("project_id")
-        if project_id == "__global__":
+        if project_id == LEGACY_GLOBAL_PROJECT_ID or is_global_project_id(project_id):
             project_id = None
 
         return Entity(
