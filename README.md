@@ -64,13 +64,14 @@ Two are mounted, both requiring `Authorization: Bearer <api-key>`:
 | endpoint | transport | workers |
 |---|---|---|
 | **`/mcp`** (or `/mcp/`) | Streamable HTTP, **stateless** | any number |
-| `/sse` + `/messages` | SSE (legacy) | **1 only** |
+| `/sse` + `/messages` | SSE (legacy) | **1 only — broken above that** |
 
-The SSE transport keeps its session map in process, so a `POST /messages` has to
-reach the same worker that holds the stream. Measured on four workers, only 2 of
-6 posts landed. **Prefer `/mcp`;** `/sse` is kept for existing clients and is the
-reason the server currently runs `--workers 1`.
+Measured on the same server, 6 MCP `initialize` calls against a live session:
+SSE goes 6/6 at one worker to **2/6** at four, because its session map lives in
+process and the POST has to reach the worker holding the stream. `/mcp` is
+12/12 at four workers. **The server ships with 4 workers; use `/mcp`.**
 
+`/sse` is kept only so existing clients keep working while they move. It is the
 If you put a reverse proxy in front, remember to route `/mcp` to the service — it is easy to add the transport and leave it unreachable from outside.
 
 ## Quick Start
