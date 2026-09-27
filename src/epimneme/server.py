@@ -1389,6 +1389,10 @@ mcp = FastMCP(
     # HTTP carries no cross-request state, so /mcp is safe to serve from any
     # number of workers.
     stateless_http=True,
+    # The streamable app carries its own route at `streamable_http_path`
+    # (default "/mcp"). Mounting that app at /mcp would serve it from
+    # /mcp/mcp, so point the internal route at the mount root.
+    streamable_http_path="/",
 )
 register_skills(mcp)
 
@@ -1874,6 +1878,20 @@ async def bulk_import(
 
 # Streamable HTTP at /mcp (stateless, multi-worker safe) — mounted first so the
 # catch-all SSE mount at "/" cannot shadow it.
+#
+# Starlette hands a mounted sub-application an EMPTY path for a request to the
+# mount point itself, so with `streamable_http_path="/"` a POST to /mcp 404s
+# while /mcp/ works. Clients overwhelmingly write /mcp, so redirect the
+# slashless spelling. 307 preserves both method and body, which matters because
+# every MCP call is a POST with a JSON-RPC payload.
+from fastapi.responses import RedirectResponse
+
+
+@app.api_route("/mcp", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+async def _mcp_slash_redirect() -> RedirectResponse:
+    return RedirectResponse("/mcp/", status_code=307)
+
+
 streamable_app = mcp.streamable_http_app()
 app.mount("/mcp", streamable_app)
 
