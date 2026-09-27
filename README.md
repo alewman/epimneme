@@ -35,6 +35,26 @@ Retrieval alone (the numbers above) is only half the story — see [`assembly.py
 
 Retrieval is close to saturated — R@10 is 98.2% and turn-level evidence completeness 0.871 — so most remaining error is reader-side, not retrieval-side. Two prompt-level fixes found by reading generated answers rather than aggregate scores were worth +5.2pp end to end, against nothing measurable from an extensive retrieval and embedder programme. If you are building on top of `recall()`, the pitfalls are written up in the `epimneme://recipes/answering-from-recall` MCP resource ([`skills.py`](src/epimneme/skills.py)) — briefly: never place the final answer last under a token cap, and never offer a blanket "say Unknown if not found" for answers that must be computed.
 
+### Latency
+
+Measured on a 277-document project, `limit=10` (the production shape), four uvicorn workers on CPU, warm:
+
+| concurrent clients | median | p95 | slowest | throughput |
+|---|---|---|---|---|
+| 1 | 79 ms | 94 ms | 105 ms | 12.5 req/s |
+| 4 | 82 ms | 94 ms | 97 ms | 45.6 req/s |
+| 8 | 111 ms | 135 ms | 151 ms | 60.9 req/s |
+| 16 | 149 ms | 206 ms | 233 ms | 78.1 req/s |
+
+No LLM is called on the query path, so there is no token latency and no per-query cost. Embedding the
+query is ~3 ms of that; the rest is pgvector search, six-channel RRF fusion and the post-fusion rerank
+stack. At `limit=50` (the depth the benchmarks score at, not a typical production call) the median is
+~179 ms.
+
+Two caveats. The **first** query after a restart loads the embedding model — about 2.5 s, once per
+worker; everything above is warm. And latency grows with corpus size, so re-measure if a single
+project reaches the thousands of memories.
+
 See [benchmarks/BENCHMARK_RESULTS.md](benchmarks/BENCHMARK_RESULTS.md) for the full write-up, including LoCoMo numbers and a per-category breakdown against [MemPalace](https://github.com/Chessnl/mempalace).
 
 ## Quick Start
