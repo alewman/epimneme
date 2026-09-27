@@ -38,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 EXPOSE 8000
 
 # Run with uvicorn
-CMD ["uvicorn", "epimneme.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--log-level", "info"]
+CMD ["uvicorn", "epimneme.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info"]

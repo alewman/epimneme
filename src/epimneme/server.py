@@ -221,6 +221,23 @@ from epimneme.ratelimit import RATE_LIMIT_ENABLED, RateLimitMiddleware
 if RATE_LIMIT_ENABLED:
     app.add_middleware(RateLimitMiddleware)
 
+# Bearer auth for the MCP transport (/sse, /messages). The FastMCP app is
+# mounted as a sub-application and so never runs the FastAPI dependency that
+# guards /api/*: before this, GET /sse returned 200 and handed a session id to
+# anyone. Production was relying on a Traefik HeadersRegexp rule to keep that
+# shut, which put a routing rule in charge of security and left the endpoint
+# open to anything already inside the network.
+# EPIMNEME_MCP_AUTH_REQUIRED=0 restores the old behaviour for local development.
+from epimneme.mcp_auth import MCPAuthMiddleware
+
+_MCP_AUTH_REQUIRED = os.environ.get("EPIMNEME_MCP_AUTH_REQUIRED", "1") == "1"
+if not _MCP_AUTH_REQUIRED:
+    logger.warning(
+        "EPIMNEME_MCP_AUTH_REQUIRED=0 — the MCP transport (/sse, /messages) is "
+        "UNAUTHENTICATED. Do not run this way with a public route."
+    )
+app.add_middleware(MCPAuthMiddleware, enabled=_MCP_AUTH_REQUIRED)
+
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
 

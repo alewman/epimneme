@@ -46,6 +46,11 @@ services:
       # Instruction-tuned models need their prefixes set, or they score well
       # below their potential (EmbeddingGemma: query "task: search result | query: ",
       # doc "title: none | text: ").
+      # Require a Bearer token on the MCP transport (/sse, /messages). The
+      # FastMCP app is mounted as a sub-application and does not run the
+      # dependency that guards /api/*, so without this GET /sse hands a session
+      # id to anyone who asks. Leave at 1 in anything with a network route.
+      EPIMNEME_MCP_AUTH_REQUIRED: ${EPIMNEME_MCP_AUTH_REQUIRED:-1}
       EPIMNEME_EMBEDDING_BACKEND: ${EPIMNEME_EMBEDDING_BACKEND:-sentence-transformers}
       EPIMNEME_EMBEDDING_MODEL: ${EPIMNEME_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       EPIMNEME_EMBEDDING_DIM: ${EPIMNEME_EMBEDDING_DIM:-384}
