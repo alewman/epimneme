@@ -50,6 +50,12 @@ services:
       # FastMCP app is mounted as a sub-application and does not run the
       # dependency that guards /api/*, so without this GET /sse hands a session
       # id to anyone who asks. Leave at 1 in anything with a network route.
+      # X-Forwarded-User grants admin when trusted, so trust is OFF by default:
+      # anything able to reach the app directly could otherwise forge it. Turn it
+      # on only behind an authenticating proxy, and set EPIMNEME_PROXY_SECRET so
+      # the header is honoured only with a matching X-Proxy-Secret.
+      EPIMNEME_TRUST_FORWARDED_USER: ${EPIMNEME_TRUST_FORWARDED_USER:-0}
+      EPIMNEME_PROXY_SECRET: ${EPIMNEME_PROXY_SECRET:-}
       EPIMNEME_MCP_AUTH_REQUIRED: ${EPIMNEME_MCP_AUTH_REQUIRED:-1}
       EPIMNEME_EMBEDDING_BACKEND: ${EPIMNEME_EMBEDDING_BACKEND:-sentence-transformers}
       EPIMNEME_EMBEDDING_MODEL: ${EPIMNEME_EMBEDDING_MODEL:-all-MiniLM-L6-v2}

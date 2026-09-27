@@ -12,6 +12,7 @@ MCP tool functions use get_mcp_auth(ctx) to resolve auth from the MCP Context.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from dataclasses import dataclass
@@ -69,6 +70,40 @@ class AuthContext:
 # Store reference — set during app startup
 _store = None
 
+# ── Trusted-proxy configuration ──────────────────────────────────────────────
+# X-Forwarded-User is set by an authenticating reverse proxy and, when trusted,
+# grants admin with projects=["*"]. Anything able to reach the app directly can
+# forge it, so trust is OFF by default: a stock deployment cannot be escalated
+# by a header alone, whatever sits in front of it.
+#
+# Enable with EPIMNEME_TRUST_FORWARDED_USER=1, and set EPIMNEME_PROXY_SECRET so
+# the header is only honoured when the proxy also sends a matching
+# X-Proxy-Secret. Without that secret, trusting the header is only as strong as
+# the guarantee that nothing else can reach the port.
+TRUST_FORWARDED_USER = os.environ.get("EPIMNEME_TRUST_FORWARDED_USER", "0") == "1"
+PROXY_SECRET = os.environ.get("EPIMNEME_PROXY_SECRET", "")
+
+
+def _forwarded_user(headers) -> Optional[str]:
+    """Return the proxy-asserted user, or None if it must not be trusted.
+
+    `headers` is anything with a case-insensitive .get (Starlette Headers).
+    """
+    if not TRUST_FORWARDED_USER:
+        return None
+    user = headers.get("x-forwarded-user")
+    if not user:
+        return None
+    if PROXY_SECRET:
+        presented = headers.get("x-proxy-secret") or ""
+        if not hmac.compare_digest(presented, PROXY_SECRET):
+            logger.warning(
+                "X-Forwarded-User present but X-Proxy-Secret missing or wrong — "
+                "refusing to grant admin. Source may be bypassing the proxy."
+            )
+            return None
+    return user
+
 
 def set_auth_store(store) -> None:
     """Set the PostgresStore used for API key validation. Called at startup."""
@@ -119,7 +154,7 @@ async def get_auth(
         return auth
 
     # 2. OAuth passthrough (Traefik sets X-Forwarded-User)
-    forwarded_user = request.headers.get("X-Forwarded-User")
+    forwarded_user = _forwarded_user(request.headers)
     if forwarded_user:
         return AuthContext(
             name=forwarded_user,
@@ -171,7 +206,7 @@ async def get_mcp_auth(ctx) -> AuthContext:
                 return auth
 
         # Try OAuth passthrough
-        forwarded_user = request.headers.get("x-forwarded-user")
+        forwarded_user = _forwarded_user(request.headers)
         if forwarded_user:
             return AuthContext(
                 name=forwarded_user,
