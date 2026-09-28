@@ -8,6 +8,8 @@ Three ways to access:
 
 from __future__ import annotations
 
+import secrets
+
 import json
 import logging
 import os
@@ -62,7 +64,7 @@ from epimneme.core.models import (
     UpdateKeyRequest,
     UpdateMemoryRequest,
 )
-from epimneme.dashboard import DASHBOARD_HTML
+from epimneme.dashboard import D3_SRI, DASHBOARD_HTML
 from epimneme.bulk_import import (
     import_project_files,
     import_chat_directory,
@@ -288,10 +290,40 @@ app.add_middleware(MCPAuthMiddleware, enabled=_MCP_AUTH_REQUIRED)
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
 
+# The dashboard is one HTML file with its script inline, so the policy admits
+# that one block by per-request nonce and nothing else: no 'unsafe-inline', so
+# an injected on* attribute or <script> does not run even if an escaping bug
+# lets it into the DOM. This is the second layer; escaping in the template is
+# the first. Inline style *attributes* are everywhere in the template and are
+# not a script vector, hence 'unsafe-inline' for styles only.
+_DASHBOARD_CSP = (
+    "default-src 'self'; "
+    "script-src 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'nonce-{nonce}' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "object-src 'none'"
+)
+_DASHBOARD_HEADERS_STATIC = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Cache-Control": "no-store",
+}
+
+
 @app.get("/", include_in_schema=False)
 async def dashboard():
     """Serve the web dashboard (browser access via Traefik OAuth)."""
-    return HTMLResponse(content=DASHBOARD_HTML)
+    nonce = secrets.token_urlsafe(16)
+    body = DASHBOARD_HTML.replace("__CSP_NONCE__", nonce).replace("__D3_SRI__", D3_SRI)
+    headers = {**_DASHBOARD_HEADERS_STATIC,
+               "Content-Security-Policy": _DASHBOARD_CSP.format(nonce=nonce)}
+    return HTMLResponse(content=body, headers=headers)
 
 
 # ── Health Check (no auth) ───────────────────────────────────────────────────

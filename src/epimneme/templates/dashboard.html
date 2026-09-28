@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Engram</title>
-<style>
+<title>Epimneme</title>
+<style nonce="__CSP_NONCE__">
 :root {
   --bg: #0d1117; --surface: #161b22; --surface-2: #21262d;
   --border: #30363d; --text: #e6edf3; --text-dim: #8b949e;
@@ -191,13 +191,13 @@ h2 { font-size:20px; margin-bottom:16px; }
       <button data-tab="logger">&#x26A1; Activity</button>
       <button data-tab="diagnostics">&#x1F6E0;&#xFE0F; Diagnostics</button>
     </nav>
-    <div class="version" id="version-label">Engram</div>
+    <div class="version" id="version-label">Epimneme</div>
   </aside>
   <main class="main" id="content"></main>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="__D3_SRI__" crossorigin="anonymous"></script>
+<script nonce="__CSP_NONCE__">
 const API = '';
 
 async function api(path, opts={}) {
@@ -219,7 +219,7 @@ function toast(msg, ok=true) {
 
 function $(sel) { return document.querySelector(sel); }
 function html(el, h) { el.innerHTML = h; }
-function badge(kind) { return `<span class="badge badge-${kind}">${kind}</span>`; }
+function badge(kind) { return `<span class="badge badge-${esc(kind)}">${esc(kind)}</span>`; }
 function ago(ts) {
   if (!ts) return '—';
   const d = new Date(ts);
@@ -230,8 +230,43 @@ function ago(ts) {
   return Math.floor(s/86400) + 'd ago';
 }
 function truncate(s, n=120) { return s && s.length > n ? s.slice(0,n) + '…' : (s||''); }
-function jsonAttr(obj) { return JSON.stringify(JSON.stringify(obj)).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
-function escapeHtml(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+const esc = escapeHtml;
+
+// Every string from the server goes through esc() before it touches innerHTML.
+// An entity named <img onerror=…> ran in this dashboard (external review,
+// 2026-09-25); the rule is now that nothing is interpolated raw.
+//
+// Objects a modal needs (a memory, a key) never travel through an attribute:
+// keep() parks them here and only the id goes into data-id.
+const _rows = new Map();
+function keep(obj) { _rows.set(obj.id, obj); return esc(obj.id); }
+
+// One delegated listener instead of inline handler attributes with data spliced in: data in an
+// attribute is plain text, not a JS-string literal a quote can break out of.
+// Elements declare data-action (click) or data-change (change) plus data-* args.
+const ACTIONS = {};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const fn = ACTIONS[el.dataset.action];
+  if (!fn) return;
+  if (el.tagName === 'A') e.preventDefault();
+  fn(el.dataset, el, e);
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-change]');
+  if (!el) return;
+  const fn = ACTIONS[el.dataset.change];
+  if (fn) fn(el.dataset, el, e);
+});
+ACTIONS['close-modal'] = (d, el) => el.closest('.modal-bg')?.remove();
+ACTIONS['select'] = (d, el) => el.select();
+ACTIONS['tab'] = d => goTab(d.tab, d.query ? {query: d.query} : d.project ? {project: d.project} : {});
+ACTIONS['persistent'] = (d, el) => togglePersistent(d.project, el.checked);
 
 // ── State ──
 let currentTab = 'overview';
@@ -293,7 +328,7 @@ async function renderTab() {
       case 'reflection': await renderReflection(c); break;
     }
   } catch(e) {
-    html(c, `<div class="empty">Error: ${e.message}</div>`);
+    html(c, `<div class="empty">Error: ${esc(e.message)}</div>`);
   }
 }
 
@@ -302,7 +337,7 @@ async function renderOverview(c) {
   const [stats, health, projResp] = await Promise.all([api('/api/stats'), api('/health'), api('/api/projects')]);
   const projects = stats.projects || [];
   const projectDetails = (projResp.projects || []);
-  $('#version-label').textContent = `Engram v${health.version || '?'}`;
+  $('#version-label').textContent = `Epimneme v${health.version || '?'}`;
 
   let detailed = {};
   try { detailed = await api('/api/stats/detailed'); } catch(e) {}
@@ -310,37 +345,37 @@ async function renderOverview(c) {
   html(c, `
     <h2>Overview</h2>
     <div class="stat-grid">
-      <div class="stat" style="cursor:pointer" onclick="goTab('memories')"><div class="value">${stats.total_memories || 0}</div><div class="label">Memories</div></div>
-      <div class="stat"><div class="value">${stats.total_vectors || 0}</div><div class="label">Vectors</div></div>
-      <div class="stat" style="cursor:pointer" onclick="goTab('entities')"><div class="value">${stats.total_entities || 0}</div><div class="label">Entities</div></div>
-      <div class="stat" style="cursor:pointer" onclick="goTab('sessions')"><div class="value">${projects.length}</div><div class="label">Projects</div></div>
+      <div class="stat" style="cursor:pointer" data-action="tab" data-tab="memories"><div class="value">${esc(stats.total_memories || 0)}</div><div class="label">Memories</div></div>
+      <div class="stat"><div class="value">${esc(stats.total_vectors || 0)}</div><div class="label">Vectors</div></div>
+      <div class="stat" style="cursor:pointer" data-action="tab" data-tab="entities"><div class="value">${esc(stats.total_entities || 0)}</div><div class="label">Entities</div></div>
+      <div class="stat" style="cursor:pointer" data-action="tab" data-tab="sessions"><div class="value">${projects.length}</div><div class="label">Projects</div></div>
     </div>
     <div class="card">
       <h3>Projects</h3>
       ${projectDetails.length ? projectDetails.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
-          <a href="#" style="color:var(--accent)" onclick="goTab('memories',{query:'project:${escapeHtml(p.name)}'});return false">${escapeHtml(p.name)}</a>
+          <a href="#" style="color:var(--accent)" data-action="tab" data-tab="memories" data-query="project:${esc(p.name)}">${esc(p.name)}</a>
           <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer" title="When enabled, memories never fade">
-            <input type="checkbox" ${p.persistent_memories ? 'checked' : ''} onchange="togglePersistent('${escapeHtml(p.name)}', this.checked)">
+            <input type="checkbox" ${p.persistent_memories ? 'checked' : ''} data-change="persistent" data-project="${esc(p.name)}">
             \u{1F512} Persistent
           </label>
         </div>`).join('') : '<div class="empty">No projects yet</div>'}
     </div>
     ${detailed.memories_by_kind ? `<div class="card"><h3>Memories by Kind</h3>
-      ${Object.entries(detailed.memories_by_kind).map(([k,v]) => `<div class="flex" style="padding:2px 0;cursor:pointer" onclick="goTab('memories',{query:'kind:${k}'})">${badge(k)} <span>${v}</span></div>`).join('')}
+      ${Object.entries(detailed.memories_by_kind).map(([k,v]) => `<div class="flex" style="padding:2px 0;cursor:pointer" data-action="tab" data-tab="memories" data-query="kind:${esc(k)}">${badge(k)} <span>${esc(v)}</span></div>`).join('')}
     </div>` : ''}
     ${detailed.recent_sessions ? `<div class="card"><h3>Recent Sessions</h3>
       <table><tr><th>Task</th><th>Project</th><th>Started</th><th>Summary</th></tr>
       ${detailed.recent_sessions.map(s => `<tr>
-        <td>${truncate(s.task||'—',40)}</td>
-        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" onclick="event.preventDefault();goTab('entities',{project:'${s.project_name}'})">${s.project_name}</a>` : '—'}</td>
+        <td>${esc(truncate(s.task||'—',40))}</td>
+        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" data-action="tab" data-tab="entities" data-project="${esc(s.project_name)}">${esc(s.project_name)}</a>` : '—'}</td>
         <td>${ago(s.started_at)}</td>
-        <td>${truncate(s.summary||'—',60)}</td>
+        <td>${esc(truncate(s.summary||'—',60))}</td>
       </tr>`).join('')}
       </table>
     </div>` : ''}
     <div class="card"><h3>System</h3>
       <div>Embeddings: <strong>${stats.embeddings_enabled ? 'Enabled' : 'Disabled'}</strong></div>
-      <div>Status: <strong style="color:var(--success)">${health.status}</strong></div>
+      <div>Status: <strong style="color:var(--success)">${esc(health.status)}</strong></div>
     </div>
   `);
 }
@@ -382,15 +417,15 @@ async function renderMemories(c) {
     html(el, `<table><tr><th>Kind</th><th>Content</th><th>Subject</th><th>Score</th><th>Ver</th><th>Actions</th></tr>
       ${res.results.map(r => `<tr${r.pinned ? ' style="background:rgba(255,200,50,0.08)"' : ''}>
         <td>${r.pinned ? '&#x1F4CC; ' : ''}${badge(r.kind)}</td>
-        <td style="cursor:pointer" onclick="viewMemory(${jsonAttr(r)})" title="Click to view">${truncate(r.content,80)}</td>
-        <td>${r.subject||'—'}</td>
-        <td>${r.score}</td>
-        <td>${r.version > 1 ? `<a href="#" onclick="event.preventDefault();viewVersions('${r.version_of||r.id}')">v${r.version||1}</a>` : `v${r.version||1}`}</td>
+        <td style="cursor:pointer" data-action="view-memory" data-id="${keep(r)}" title="Click to view">${esc(truncate(r.content,80))}</td>
+        <td>${esc(r.subject||'—')}</td>
+        <td>${esc(r.score)}</td>
+        <td>${r.version > 1 ? `<a href="#" data-action="versions" data-id="${esc(r.version_of||r.id)}">v${esc(r.version||1)}</a>` : `v${esc(r.version||1)}`}</td>
         <td class="flex">
-          <button class="btn btn-sm" style="background:${r.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:11px" onclick="togglePin('${r.id}',${!r.pinned})" title="${r.pinned ? 'Unpin' : 'Pin'}">${r.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
-          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="editMemory(${jsonAttr(r)})">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="forgetMemory('${r.id}')">Forget</button>
-          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:10px" onclick="hardForgetMemory('${r.id}')" title="Permanently delete from database">&times;</button>
+          <button class="btn btn-sm" style="background:${r.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:11px" data-action="pin" data-id="${esc(r.id)}" data-pin="${!r.pinned}" title="${r.pinned ? 'Unpin' : 'Pin'}">${r.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
+          <button class="btn btn-sm" style="background:var(--surface-2)" data-action="edit-memory" data-id="${keep(r)}">Edit</button>
+          <button class="btn btn-danger btn-sm" data-action="forget" data-id="${esc(r.id)}">Forget</button>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:10px" data-action="hard-forget" data-id="${esc(r.id)}" title="Permanently delete from database">&times;</button>
         </td>
       </tr>`).join('')}
     </table>`);
@@ -439,45 +474,52 @@ function showAddMemoryModal() {
   };
 }
 
-window.forgetMemory = async function(id) {
+ACTIONS['forget'] = d => forgetMemory(d.id);
+ACTIONS['hard-forget'] = d => hardForgetMemory(d.id);
+ACTIONS['pin'] = (d, el) => { el.closest('.modal-bg')?.remove(); togglePin(d.id, d.pin === 'true'); };
+ACTIONS['edit-memory'] = (d, el) => { el.closest('.modal-bg')?.remove(); editMemory(_rows.get(d.id)); };
+ACTIONS['view-memory'] = d => viewMemory(_rows.get(d.id));
+ACTIONS['versions'] = d => viewVersions(d.id);
+
+async function forgetMemory(id) {
   const choice = confirm('Mark this memory as obsolete?\n\nClick OK to soft-forget (mark obsolete).\nTo permanently delete, hold Shift and click the Forget button instead.');
   if (!choice) return;
   try {
-    await api(`/api/memories/${id}?reason=forgotten+via+dashboard`, {method:'DELETE'});
+    await api(`/api/memories/${encodeURIComponent(id)}?reason=forgotten+via+dashboard`, {method:'DELETE'});
     toast('Memory marked obsolete');
     renderTab();
   } catch(e) { toast(e.message, false); }
 };
 
-window.hardForgetMemory = async function(id) {
+async function hardForgetMemory(id) {
   if (!confirm('PERMANENTLY DELETE this memory?\n\nThis cannot be undone. The memory and all its entity links will be erased from the database.')) return;
   try {
-    await api(`/api/memories/${id}?reason=hard+delete+via+dashboard&hard=true`, {method:'DELETE'});
+    await api(`/api/memories/${encodeURIComponent(id)}?reason=hard+delete+via+dashboard&hard=true`, {method:'DELETE'});
     toast('Memory permanently deleted');
     renderTab();
   } catch(e) { toast(e.message, false); }
 };
 
-window.togglePin = async function(id, pin) {
+async function togglePin(id, pin) {
   try {
     const action = pin ? 'pin' : 'unpin';
-    await api(`/api/memories/${id}/${action}`, {method:'POST'});
+    await api(`/api/memories/${encodeURIComponent(id)}/${action}`, {method:'POST'});
     toast(pin ? 'Memory pinned — it will always appear in context and never be garbage-collected' : 'Memory unpinned');
     renderTab();
   } catch(e) { toast(e.message, false); }
 };
 
-window.editMemory = function(memJson) {
-  const m = JSON.parse(memJson);
+function editMemory(m) {
+  if (!m) return;
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">
     <h3>Edit Memory</h3>
-    <div style="display:flex;gap:8px;margin-bottom:12px">${badge(m.kind)} <span class="mono" style="font-size:11px;color:var(--text-dim)">${m.id.slice(0,12)}… v${m.version||1}</span></div>
-    <div class="form-row"><label>Content</label><textarea id="em-content" rows="5">${(m.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea></div>
-    <div class="form-row"><label>Subject</label><input id="em-subject" value="${(m.subject||'').replace(/"/g,'&quot;')}"></div>
-    <div class="form-row"><label>Tags (comma-separated)</label><input id="em-tags" value="${(m.tags||[]).join(', ')}"></div>
-    <div class="form-row"><label>Confidence (0-1)</label><input id="em-confidence" type="number" min="0" max="1" step="0.1" value="${m.confidence ?? ''}"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">${badge(m.kind)} <span class="mono" style="font-size:11px;color:var(--text-dim)">${esc(m.id.slice(0,12))}… v${esc(m.version||1)}</span></div>
+    <div class="form-row"><label>Content</label><textarea id="em-content" rows="5">${esc(m.content||'')}</textarea></div>
+    <div class="form-row"><label>Subject</label><input id="em-subject" value="${esc(m.subject||'')}"></div>
+    <div class="form-row"><label>Tags (comma-separated)</label><input id="em-tags" value="${esc((m.tags||[]).join(', '))}"></div>
+    <div class="form-row"><label>Confidence (0-1)</label><input id="em-confidence" type="number" min="0" max="1" step="0.1" value="${esc(m.confidence ?? '')}"></div>
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Editing creates a new version (old version is preserved)</div>
     <div class="flex" style="justify-content:flex-end;gap:8px">
       <button class="btn" id="em-cancel" style="background:var(--surface-2)">Cancel</button>
@@ -494,7 +536,7 @@ window.editMemory = function(memJson) {
       confidence: bg.querySelector('#em-confidence').value ? parseFloat(bg.querySelector('#em-confidence').value) : null,
     };
     try {
-      const res = await api(`/api/memories/${m.id}`, {method:'PUT', body:JSON.stringify(body)});
+      const res = await api(`/api/memories/${encodeURIComponent(m.id)}`, {method:'PUT', body:JSON.stringify(body)});
       toast(`Updated → v${res.version}`);
       bg.remove();
       renderTab();
@@ -502,59 +544,59 @@ window.editMemory = function(memJson) {
   };
 };
 
-window.viewMemory = function(memJson) {
-  const m = JSON.parse(memJson);
+function viewMemory(m) {
+  if (!m) return;
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">
-    <h3>${m.subject || 'Memory Detail'}</h3>
+    <h3>${esc(m.subject || 'Memory Detail')}</h3>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       ${badge(m.kind)}
       ${m.pinned ? '<span class="tag" style="color:#e6a817;border-color:#e6a817">&#x1F4CC; Pinned</span>' : ''}
-      ${(m.tags||[]).map(t => `<span class="tag">${t}</span>`).join('')}
-      ${m.version > 1 ? `<span class="tag" style="color:var(--purple)">v${m.version}</span>` : ''}
+      ${(m.tags||[]).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+      ${m.version > 1 ? `<span class="tag" style="color:var(--purple)">v${esc(m.version)}</span>` : ''}
     </div>
-    <div class="mono" style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${m.id}</div>
-    <div style="padding:12px;background:var(--surface-2);border-radius:var(--radius);white-space:pre-wrap;font-size:13px;line-height:1.7;max-height:400px;overflow-y:auto">${(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-    ${m.score ? `<div style="margin-top:8px;font-size:12px;color:var(--text-dim)">Relevance: ${m.score}</div>` : ''}
+    <div class="mono" style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${esc(m.id)}</div>
+    <div style="padding:12px;background:var(--surface-2);border-radius:var(--radius);white-space:pre-wrap;font-size:13px;line-height:1.7;max-height:400px;overflow-y:auto">${esc(m.content||'')}</div>
+    ${m.score ? `<div style="margin-top:8px;font-size:12px;color:var(--text-dim)">Relevance: ${esc(m.score)}</div>` : ''}
     <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
-      <button class="btn" style="background:${m.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:12px" onclick="this.closest('.modal-bg').remove();togglePin('${m.id}',${!m.pinned})">${m.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
-      <button class="btn" style="background:var(--surface-2)" onclick="this.closest('.modal-bg').remove();editMemory(${jsonAttr(m)})">Edit</button>
-      <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+      <button class="btn" style="background:${m.pinned ? 'var(--accent)' : 'var(--surface-2)'};font-size:12px" data-action="pin" data-id="${esc(m.id)}" data-pin="${!m.pinned}">${m.pinned ? '&#x1F4CC; Unpin' : '&#x1F4CC; Pin'}</button>
+      <button class="btn" style="background:var(--surface-2)" data-action="edit-memory" data-id="${keep(m)}">Edit</button>
+      <button class="btn btn-primary" data-action="close-modal">Close</button>
     </div>
   </div>`;
   document.body.appendChild(bg);
   bg.onclick = e => { if (e.target === bg) bg.remove(); };
 };
 
-window.viewVersions = async function(rootId) {
+async function viewVersions(rootId) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal"><h3>Version History</h3><div class="empty">Loading…</div></div>`;
   document.body.appendChild(bg);
   bg.onclick = e => { if (e.target === bg) bg.remove(); };
   try {
-    const data = await api(`/api/memories/${rootId}/versions`);
+    const data = await api(`/api/memories/${encodeURIComponent(rootId)}/versions`);
     const versions = data.versions || [];
     bg.querySelector('.modal').innerHTML = `
       <h3>Version History <span style="font-size:13px;color:var(--text-dim)">(${versions.length} versions)</span></h3>
       ${versions.length ? versions.map(v => `
         <div class="card" style="margin-bottom:8px">
           <div class="flex" style="justify-content:space-between;margin-bottom:4px">
-            <span>v${v.version} ${badge(v.kind)}</span>
+            <span>v${esc(v.version)} ${badge(v.kind)}</span>
             <span style="font-size:11px;color:var(--text-dim)">${ago(v.created_at)}</span>
           </div>
-          ${v.subject ? `<div style="font-weight:600;color:var(--accent);font-size:13px;margin-bottom:4px">${v.subject}</div>` : ''}
-          <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:150px;overflow:hidden">${(v.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+          ${v.subject ? `<div style="font-weight:600;color:var(--accent);font-size:13px;margin-bottom:4px">${esc(v.subject)}</div>` : ''}
+          <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:150px;overflow:hidden">${esc(v.content||'')}</div>
         </div>
       `).join('') : '<div class="empty">No versions found</div>'}
       <div class="flex" style="justify-content:flex-end;margin-top:12px">
-        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+        <button class="btn btn-primary" data-action="close-modal">Close</button>
       </div>`;
   } catch(e) {
-    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${e.message}</p>
+    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${esc(e.message)}</p>
       <div class="flex" style="justify-content:flex-end;margin-top:16px">
-        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+        <button class="btn btn-primary" data-action="close-modal">Close</button>
       </div>`;
   }
 };
@@ -568,7 +610,7 @@ async function renderEntities(c) {
     <div class="search-bar">
       <select id="ent-project" style="width:200px">
         <option value="">All projects</option>
-        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+        ${projects.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
       </select>
       <select id="ent-kind" style="width:150px">
         <option value="">All kinds</option>
@@ -606,15 +648,15 @@ async function renderEntities(c) {
       html(el, `<div style="margin-bottom:8px;color:var(--text-dim);font-size:13px">${entities.length} entities</div>
         <table><tr><th>Name</th><th>Kind</th><th>Properties</th><th>Created</th><th>Actions</th></tr>
         ${entities.map(e => `<tr>
-          <td><strong>${e.name}</strong></td>
+          <td><strong>${esc(e.name)}</strong></td>
           <td>${badge(e.kind)}</td>
-          <td class="mono" style="font-size:11px">${truncate(JSON.stringify(e.properties||{}),50)}</td>
+          <td class="mono" style="font-size:11px">${esc(truncate(JSON.stringify(e.properties||{}),50))}</td>
           <td>${ago(e.created_at)}</td>
-          <td><button class="btn btn-sm" style="background:var(--surface-2)" onclick="exploreEntity('${e.name.replace(/'/g,"\\'")}')">Explore</button></td>
+          <td><button class="btn btn-sm" style="background:var(--surface-2)" data-action="explore" data-name="${esc(e.name)}">Explore</button></td>
         </tr>`).join('')}
       </table>`);
     } catch(e) {
-      html(el, `<div class="empty">Error: ${e.message}</div>`);
+      html(el, `<div class="empty">Error: ${esc(e.message)}</div>`);
     }
   };
 
@@ -668,10 +710,12 @@ async function renderEntities(c) {
   };
 }
 
-window.exploreEntity = async function(name) {
+ACTIONS['explore'] = d => exploreEntity(d.name);
+
+async function exploreEntity(name) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
-  bg.innerHTML = `<div class="modal"><h3>Exploring "${name}"…</h3><div class="empty">Loading…</div></div>`;
+  bg.innerHTML = `<div class="modal"><h3>Exploring "${esc(name)}"…</h3><div class="empty">Loading…</div></div>`;
   document.body.appendChild(bg);
   bg.onclick = e => { if (e.target === bg) bg.remove(); };
 
@@ -679,21 +723,21 @@ window.exploreEntity = async function(name) {
     const data = await api(`/api/entities/${encodeURIComponent(name)}/explore?depth=2`);
     const conns = data.connections || [];
     bg.querySelector('.modal').innerHTML = `
-      <h3>Entity: ${name}</h3>
+      <h3>Entity: ${esc(name)}</h3>
       ${conns.length ? `<table><tr><th>Connected Entity</th><th>Kind</th><th>Relationships</th></tr>
         ${conns.map(c => `<tr>
-          <td><strong>${c.entity.name}</strong></td>
+          <td><strong>${esc(c.entity.name)}</strong></td>
           <td>${badge(c.entity.kind)}</td>
-          <td>${c.relationships.map(r => `<span class="tag">${r.relation} → ${r.to}</span>`).join(' ')}</td>
+          <td>${c.relationships.map(r => `<span class="tag">${esc(r.relation)} → ${esc(r.to)}</span>`).join(' ')}</td>
         </tr>`).join('')}
       </table>` : '<div class="empty">No connections found</div>'}
       <div class="flex" style="justify-content:flex-end;margin-top:16px">
-        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+        <button class="btn btn-primary" data-action="close-modal">Close</button>
       </div>`;
   } catch(e) {
-    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${e.message}</p>
+    bg.querySelector('.modal').innerHTML = `<h3>Error</h3><p>${esc(e.message)}</p>
       <div class="flex" style="justify-content:flex-end;margin-top:16px">
-        <button class="btn btn-primary" onclick="this.closest('.modal-bg').remove()">Close</button>
+        <button class="btn btn-primary" data-action="close-modal">Close</button>
       </div>`;
   }
 };
@@ -723,7 +767,7 @@ async function renderGraph(c) {
       </select>
       <select id="g-project" style="width:200px">
         <option value="">All projects</option>
-        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+        ${projects.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
       </select>
       <label style="font-size:13px">Nodes:</label>
       <input id="g-limit" type="number" value="200" min="10" max="1000" style="width:80px">
@@ -805,7 +849,7 @@ async function renderGraph(c) {
       const kinds = {};
       nodes.forEach(n => { kinds[n.kind] = (kinds[n.kind]||0) + 1; });
       $('#g-legend').innerHTML = Object.entries(kinds).map(([k,v]) =>
-        `<span><span class="swatch" style="background:${KIND_COLORS[k]||'#8b949e'}"></span>${k} (${v})</span>`
+        `<span><span class="swatch" style="background:${KIND_COLORS[k]||'#8b949e'}"></span>${esc(k)} (${esc(v)})</span>`
       ).join('');
 
       // Stats
@@ -961,14 +1005,14 @@ async function renderGraph(c) {
         .style('z-index','10').style('max-width','300px');
 
       node.on('mouseover', (e, d) => {
-        let tip = `<strong>${d.name}</strong><br><span style="color:var(--text-dim)">${d.kind}</span>`;
-        if (d.weight) tip += `<br>Connections: ${d.weight}`;
+        let tip = `<strong>${esc(d.name)}</strong><br><span style="color:var(--text-dim)">${esc(d.kind)}</span>`;
+        if (d.weight) tip += `<br>Connections: ${esc(d.weight)}`;
         if (useHeat) {
-          tip += `<br>Access count: ${d._accessCount || 0}`;
+          tip += `<br>Access count: ${esc(d._accessCount || 0)}`;
           if (d.last_accessed) tip += `<br>Last accessed: ${ago(d.last_accessed)}`;
           if (d._isHot) tip += `<br><span style="color:#f85149">🔥 Recently active</span>`;
         }
-        if (d.content_preview) tip += `<br><span style="color:var(--text-dim);font-size:11px">${d.content_preview}</span>`;
+        if (d.content_preview) tip += `<br><span style="color:var(--text-dim);font-size:11px">${esc(d.content_preview)}</span>`;
         tooltip.style('display','block').html(tip);
       }).on('mousemove', (e) => {
         tooltip.style('left', (e.offsetX+15)+'px').style('top', (e.offsetY-10)+'px');
@@ -986,7 +1030,7 @@ async function renderGraph(c) {
       });
 
     } catch(e) {
-      html(container, `<div class="empty">Error: ${e.message}</div>`);
+      html(container, `<div class="empty">Error: ${esc(e.message)}</div>`);
     }
   }
 
@@ -1006,11 +1050,11 @@ async function renderSessions(c) {
     <h2>Sessions <span style="font-size:14px;color:var(--text-dim);font-weight:normal">(${sessions.length})</span></h2>
     ${sessions.length ? `<table><tr><th>Task</th><th>Project</th><th>Started</th><th>Ended</th><th>Summary</th></tr>
       ${sessions.map(s => `<tr>
-        <td>${truncate(s.task||'—',40)}</td>
-        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" onclick="event.preventDefault();goTab('entities',{project:'${s.project_name}'})">${s.project_name}</a>` : '—'}</td>
+        <td>${esc(truncate(s.task||'—',40))}</td>
+        <td>${s.project_name ? `<a href="#" style="color:var(--accent)" data-action="tab" data-tab="entities" data-project="${esc(s.project_name)}">${esc(s.project_name)}</a>` : '—'}</td>
         <td>${ago(s.started_at)}</td>
         <td>${s.ended_at ? ago(s.ended_at) : '<span style="color:var(--success)">Active</span>'}</td>
-        <td title="${(s.summary||'').replace(/"/g,'&quot;')}">${truncate(s.summary||'—',60)}</td>
+        <td title="${esc(s.summary||'')}">${esc(truncate(s.summary||'—',60))}</td>
       </tr>`).join('')}
     </table>` : '<div class="empty">No sessions yet</div>'}
   `);
@@ -1024,20 +1068,23 @@ async function renderKeys(c) {
   html(c, `
     <h2>API Keys</h2>
     <div style="margin-bottom:16px"><button class="btn btn-primary" id="key-add-btn">+ Create Key</button></div>
-    ${keys.length ? `<table><tr><th>Name</th><th>Role</th><th>Projects</th><th>Created</th><th>Last Used</th><th>Actions</th></tr>
+    ${keys.length ? `<table><tr><th>Name</th><th>Role</th><th>Owner</th><th>Projects</th><th>Created</th><th>Expires</th><th>Last Used</th><th>Actions</th></tr>
       ${keys.map(k => {
         const revoked = !!k.revoked_at;
         const style = revoked ? 'opacity:0.4' : '';
+        const projects = k.projects || [];
         return `<tr style="${style}">
-        <td class="mono">${k.name}</td>
-        <td><span class="badge" style="background:${k.role==='admin'?'var(--danger)':'var(--accent)'}22;color:${k.role==='admin'?'var(--danger)':'var(--accent)'}">${k.role}</span></td>
-        <td>${(k.projects||[]).join(', ') || '*'}</td>
+        <td class="mono">${esc(k.name)}</td>
+        <td><span class="badge" style="background:${k.role==='admin'?'var(--danger)':'var(--accent)'}22;color:${k.role==='admin'?'var(--danger)':'var(--accent)'}">${esc(k.role)}</span></td>
+        <td class="mono" style="font-size:11px" title="${esc(k.owner_id||'')}">${esc((k.owner_id||'').slice(0,8))}</td>
+        <td>${projects.length ? esc(projects.join(', ')) : '<span style="color:var(--text-dim)" title="An agent key with no projects can reach nothing">none</span>'}</td>
         <td>${ago(k.created_at)}</td>
+        <td>${k.expires_at ? esc(new Date(k.expires_at).toLocaleDateString()) : 'Never'}</td>
         <td>${k.last_used ? ago(k.last_used) : 'Never'}</td>
         <td class="flex">${!revoked ? `
-          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="editKey('${k.name}','${k.role}',${jsonAttr(k.projects||[])})">Edit</button>
-          <button class="btn btn-sm" style="background:var(--surface-2)" onclick="cycleKey('${k.name}')">Cycle</button>
-          <button class="btn btn-danger btn-sm" onclick="revokeKey('${k.name}')">Revoke</button>
+          <button class="btn btn-sm" style="background:var(--surface-2)" data-action="edit-key" data-id="${keep(k)}">Edit</button>
+          <button class="btn btn-sm" style="background:var(--surface-2)" data-action="cycle-key" data-name="${esc(k.name)}">Cycle</button>
+          <button class="btn btn-danger btn-sm" data-action="revoke-key" data-name="${esc(k.name)}">Revoke</button>
         ` : '<span style="color:var(--danger);font-size:12px">Revoked</span>'}</td>
       </tr>`;}).join('')}
     </table>` : '<div class="empty">No API keys</div>'}
@@ -1050,7 +1097,8 @@ async function renderKeys(c) {
       <h3>Create API Key</h3>
       <div class="form-row"><label>Name</label><input id="nk-name" placeholder="e.g. cursor-agent"></div>
       <div class="form-row"><label>Role</label><select id="nk-role"><option>agent</option><option>admin</option></select></div>
-      <div class="form-row"><label>Projects (comma-separated, blank for all)</label><input id="nk-projects"></div>
+      <div class="form-row"><label>Projects (comma-separated)</label><input id="nk-projects" placeholder="e.g. peoplesoft, rom-farmer">
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Admin keys get every project in this owner automatically. An agent key with none listed can reach nothing.</div></div>
       <div class="form-row"><label>Expires in days (blank for never)</label><input id="nk-expires" type="number"></div>
       <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
         <button class="btn" id="nk-cancel" style="background:var(--surface-2)">Cancel</button>
@@ -1075,7 +1123,7 @@ async function renderKeys(c) {
         bg2.innerHTML = `<div class="modal">
           <h3>API Key Created</h3>
           <p style="margin-bottom:12px">Copy this key now — it won't be shown again:</p>
-          <input value="${res.key}" readonly onclick="this.select()" class="mono" style="font-size:13px">
+          <input value="${esc(res.key)}" readonly data-action="select" class="mono" style="font-size:13px">
           <div class="flex" style="justify-content:flex-end;margin-top:16px">
             <button class="btn btn-primary" id="nk-done">Done</button>
           </div>
@@ -1087,18 +1135,23 @@ async function renderKeys(c) {
   };
 }
 
-window.editKey = function(name, role, projectsJson) {
-  const projects = JSON.parse(projectsJson);
+ACTIONS['edit-key'] = d => editKey(_rows.get(d.id));
+ACTIONS['cycle-key'] = d => cycleKey(d.name);
+ACTIONS['revoke-key'] = d => revokeKey(d.name);
+
+function editKey(k) {
+  if (!k) return;
+  const name = k.name, role = k.role, projects = k.projects || [];
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">
-    <h3>Edit Key: ${name}</h3>
+    <h3>Edit Key: ${esc(name)}</h3>
     <div class="form-row"><label>Role</label><select id="ek-role">
       <option value="agent" ${role==='agent'?'selected':''}>agent</option>
       <option value="admin" ${role==='admin'?'selected':''}>admin</option>
     </select></div>
     <div class="form-row" id="ek-projects-row"><label>Projects (comma-separated)</label>
-      <input id="ek-projects" value="${projects.join(', ')}">
+      <input id="ek-projects" value="${esc(projects.join(', '))}">
       <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Admin keys always get wildcard (*) access</div>
     </div>
     <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
@@ -1129,7 +1182,7 @@ window.editKey = function(name, role, projectsJson) {
   };
 };
 
-window.revokeKey = async function(name) {
+async function revokeKey(name) {
   if (!confirm(`Revoke key "${name}"?`)) return;
   try {
     await api(`/api/admin/keys/${encodeURIComponent(name)}`, {method:'DELETE'});
@@ -1138,7 +1191,7 @@ window.revokeKey = async function(name) {
   } catch(e) { toast(e.message, false); }
 };
 
-window.cycleKey = async function(name) {
+async function cycleKey(name) {
   if (!confirm(`Rotate key "${name}"?\n\nThe current key will be revoked and a new one issued with the same name, role, and projects.`)) return;
   try {
     const res = await api(`/api/admin/keys/${encodeURIComponent(name)}/cycle`, {method:'POST'});
@@ -1146,9 +1199,9 @@ window.cycleKey = async function(name) {
     const bg = document.createElement('div');
     bg.className = 'modal-bg';
     bg.innerHTML = `<div class="modal">
-      <h3>Key Rotated: ${name}</h3>
+      <h3>Key Rotated: ${esc(name)}</h3>
       <p style="color:var(--danger);font-weight:600;margin-bottom:8px">Copy this key now — it will not be shown again!</p>
-      <input id="ck-key" value="${res.key}" readonly style="font-family:var(--mono);font-size:13px;width:100%">
+      <input id="ck-key" value="${esc(res.key)}" readonly style="font-family:var(--mono);font-size:13px;width:100%">
       <div class="flex" style="justify-content:flex-end;gap:8px;margin-top:16px">
         <button class="btn btn-primary" id="ck-copy">Copy</button>
         <button class="btn" id="ck-done" style="background:var(--surface-2)">Done</button>
@@ -1188,17 +1241,17 @@ async function renderBackups(c) {
     ${backups.length ? `<table>
       <tr><th>Filename</th><th>Version</th><th>Format</th><th>Size</th><th>Date</th><th>Contents</th><th>Actions</th></tr>
       ${backups.map(b => `<tr>
-        <td class="mono" style="font-size:12px">${b.filename}</td>
-        <td>${b.engram_version || '?'}</td>
-        <td>v${b.format_version || '?'}</td>
+        <td class="mono" style="font-size:12px">${esc(b.filename)}</td>
+        <td>${esc(b.engram_version || '?')}</td>
+        <td>v${esc(b.format_version || '?')}</td>
         <td>${fmtSize(b.size_bytes)}</td>
         <td>${ago(b.created_at || b.modified_at)}</td>
-        <td style="font-size:12px;max-width:300px;white-space:normal">${fmtMeta(b.metadata)}</td>
+        <td style="font-size:12px;max-width:300px;white-space:normal">${esc(fmtMeta(b.metadata))}</td>
         <td>
           <div class="flex">
-            <button class="btn btn-primary btn-sm" onclick="restoreBackup('${b.filename}')">Restore</button>
+            <button class="btn btn-primary btn-sm" data-action="restore-backup" data-filename="${esc(b.filename)}">Restore</button>
             <a href="/api/admin/backups/${encodeURIComponent(b.filename)}/download" class="btn btn-sm" style="background:var(--surface-2);color:var(--text);text-decoration:none;display:inline-block">Download</a>
-            <button class="btn btn-danger btn-sm" onclick="deleteBackup('${b.filename}')">Delete</button>
+            <button class="btn btn-danger btn-sm" data-action="delete-backup" data-filename="${esc(b.filename)}">Delete</button>
           </div>
         </td>
       </tr>`).join('')}
@@ -1237,12 +1290,15 @@ async function renderBackups(c) {
   };
 }
 
-window.restoreBackup = async function(filename) {
+ACTIONS['restore-backup'] = d => restoreBackup(d.filename);
+ACTIONS['delete-backup'] = d => deleteBackup(d.filename);
+
+async function restoreBackup(filename) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">
     <h3>Restore Backup</h3>
-    <p style="margin-bottom:12px">Restore from: <strong class="mono" style="font-size:12px">${filename}</strong></p>
+    <p style="margin-bottom:12px">Restore from: <strong class="mono" style="font-size:12px">${esc(filename)}</strong></p>
     <div class="form-row">
       <label>Restore Mode</label>
       <select id="rs-mode">
@@ -1283,7 +1339,7 @@ window.restoreBackup = async function(filename) {
   };
 };
 
-window.deleteBackup = async function(filename) {
+async function deleteBackup(filename) {
   if (!confirm(`Delete backup "${filename}"?`)) return;
   try {
     await api(`/api/admin/backups/${encodeURIComponent(filename)}`, {method:'DELETE'});
@@ -1329,13 +1385,13 @@ async function renderLogger(c) {
       <div class="activity-chips" id="ac-chips">
         ${Object.entries(ACTIVITY_TYPES).map(([k, v]) => `
           <span class="activity-chip" data-type="${k}">
-            <span class="acdot" style="background:${v.color}"></span>${v.label}
+            <span class="acdot" style="background:${v.color}"></span>${esc(v.label)}
           </span>
         `).join('')}
       </div>
       <select id="ac-project" style="width:160px">
         <option value="">All projects</option>
-        ${projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+        ${projects.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
       </select>
       <button class="btn" id="ac-pause-btn" style="background:var(--surface-2)">Pause</button>
       <div class="activity-status">
@@ -1383,19 +1439,19 @@ async function renderLogger(c) {
       const timeStr = ts ? ts.toLocaleTimeString() : '';
       const agoStr = ts ? ago(e.ts) : '';
       return `
-        <div class="activity-entry" data-eid="${e.id}">
+        <div class="activity-entry" data-eid="${esc(e.id)}">
           <div class="ae-icon" style="background:${t.color}22;color:${t.color}">${t.icon}</div>
           <div class="ae-body">
             <div class="ae-top">
-              <span class="ae-type" style="color:${t.color}">${t.label}</span>
-              <span class="ae-time" title="${e.ts}">${timeStr} · ${agoStr}</span>
+              <span class="ae-type" style="color:${t.color}">${esc(t.label)}</span>
+              <span class="ae-time" title="${esc(e.ts)}">${timeStr} · ${agoStr}</span>
             </div>
             <div class="ae-summary">${escapeHtml(e.summary || '')}</div>
             ${e.detail ? `<div class="ae-detail">${escapeHtml(e.detail)}</div>` : ''}
             <div class="ae-meta">
               ${e.project ? `<span>📁 ${escapeHtml(e.project)}</span>` : ''}
               ${e.agent ? `<span>🤖 ${escapeHtml(e.agent)}</span>` : ''}
-              ${e.memory_id ? `<span class="mono">${e.memory_id.slice(0,8)}</span>` : ''}
+              ${e.memory_id ? `<span class="mono">${esc(String(e.memory_id).slice(0,8))}</span>` : ''}
             </div>
           </div>
         </div>`;
@@ -1512,7 +1568,7 @@ async function renderDiagnostics(c) {
     try {
       [stats, health] = await Promise.all([api('/api/stats'), api('/health')]);
     } catch(e) {
-      html(c, `<div class="empty">Error loading diagnostics: ${e.message}</div>`);
+      html(c, `<div class="empty">Error loading diagnostics: ${esc(e.message)}</div>`);
       return;
     }
     try { detailed = await api('/api/stats/detailed'); } catch(e) {}
@@ -1584,8 +1640,8 @@ async function renderDiagnostics(c) {
         <div class="card">
           <h3>System Health</h3>
           <table>
-            <tr><td>Status</td><td><strong style="color:var(--success)">${health.status || '?'}</strong></td></tr>
-            <tr><td>Version</td><td><strong>${health.version || '?'}</strong></td></tr>
+            <tr><td>Status</td><td><strong style="color:var(--success)">${esc(health.status || '?')}</strong></td></tr>
+            <tr><td>Version</td><td><strong>${esc(health.version || '?')}</strong></td></tr>
             <tr><td>Embeddings</td><td><strong style="color:${stats.embeddings_enabled ? 'var(--success)' : 'var(--danger)'}">${stats.embeddings_enabled ? 'Enabled' : 'Disabled'}</strong></td></tr>
             <tr><td>Memories</td><td>${stats.total_memories || 0}</td></tr>
             <tr><td>Vectors</td><td>${stats.total_vectors || 0}</td></tr>
@@ -1701,7 +1757,7 @@ async function renderReflection(c) {
         <h3>Scheduler</h3>
         <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
           <div>Status: <strong style="color:${sched.enabled ? 'var(--success)' : 'var(--text-dim)'}">${sched.enabled ? 'Enabled' : 'Disabled'}</strong></div>
-          <div>Interval: <strong>${sched.interval_hours || '?'}h</strong></div>
+          <div>Interval: <strong>${esc(sched.interval_hours || '?')}h</strong></div>
           <div>Next run: <strong>${sched.next_run ? new Date(sched.next_run).toLocaleString() : '—'}</strong></div>
           <button class="btn btn-primary" id="refl-run-btn" ${isRunning ? 'disabled' : ''}>
             ${isRunning ? 'Running…' : '&#x25B6; Run Now'}
@@ -1712,10 +1768,10 @@ async function renderReflection(c) {
       <div class="card">
         <h3>Configuration</h3>
         <table>
-          <tr><td>GC Retrievability Threshold</td><td><strong>${status.config?.gc_threshold || '0.05'}</strong></td><td style="color:var(--text-dim);font-size:12px">Memories below this retrievability get marked obsolete</td></tr>
-          <tr><td>Consolidation Similarity</td><td><strong>${status.config?.consolidation_threshold || '0.88'}</strong></td><td style="color:var(--text-dim);font-size:12px">Cosine similarity above which memories are merged</td></tr>
-          <tr><td>Min Cluster Size</td><td><strong>${status.config?.min_cluster_size || '3'}</strong></td><td style="color:var(--text-dim);font-size:12px">Minimum memories to form a consolidation group</td></tr>
-          <tr><td>Max Consolidation Per Run</td><td><strong>${status.config?.max_consolidations || '10'}</strong></td><td style="color:var(--text-dim);font-size:12px">Safety cap on how many groups to consolidate per cycle</td></tr>
+          <tr><td>GC Retrievability Threshold</td><td><strong>${esc(status.config?.gc_threshold || '0.05')}</strong></td><td style="color:var(--text-dim);font-size:12px">Memories below this retrievability get marked obsolete</td></tr>
+          <tr><td>Consolidation Similarity</td><td><strong>${esc(status.config?.consolidation_threshold || '0.88')}</strong></td><td style="color:var(--text-dim);font-size:12px">Cosine similarity above which memories are merged</td></tr>
+          <tr><td>Min Cluster Size</td><td><strong>${esc(status.config?.min_cluster_size || '3')}</strong></td><td style="color:var(--text-dim);font-size:12px">Minimum memories to form a consolidation group</td></tr>
+          <tr><td>Max Consolidation Per Run</td><td><strong>${esc(status.config?.max_consolidations || '10')}</strong></td><td style="color:var(--text-dim);font-size:12px">Safety cap on how many groups to consolidate per cycle</td></tr>
         </table>
       </div>
 
