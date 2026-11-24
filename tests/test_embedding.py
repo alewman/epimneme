@@ -152,3 +152,21 @@ class TestDimensionEnforcement:
         with patch("urllib.request.urlopen",
                    return_value=_Resp({"embeddings": [[1.0] + [0.0] * 383]})):
             assert b.encode(["hi"], is_query=False) is not None
+
+
+class TestTorchThreads:
+    """A busy host made torch's default thread count ~170x slower than one
+    thread (13 s vs 78 ms per encode); the sentence-transformers backend must
+    apply the configured cap, and 0 must leave torch alone."""
+
+    def test_sentence_transformers_backend_caps_threads(self):
+        torch = pytest.importorskip("torch")
+        before = torch.get_num_threads()
+        try:
+            build_backend(_cfg(embedding_backend="sentence-transformers", torch_threads=2))
+            assert torch.get_num_threads() == 2
+            torch.set_num_threads(3)
+            build_backend(_cfg(embedding_backend="sentence-transformers", torch_threads=0))
+            assert torch.get_num_threads() == 3
+        finally:
+            torch.set_num_threads(before)

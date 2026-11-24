@@ -208,5 +208,21 @@ def build_backend(config) -> EmbeddingBackend:
                         getattr(config, "ollama_url", ""), config.embedding_dim)
         return backend
 
+    set_torch_threads(getattr(config, "torch_threads", 1))
     return SentenceTransformerBackend(
         config.embedding_model, query_prefix=query_prefix, doc_prefix=doc_prefix)
+
+
+def set_torch_threads(n: int) -> None:
+    """Cap torch's intra-op threads process-wide (0 leaves torch's default).
+
+    See ``Config.torch_threads`` for the measurement behind the default of 1.
+    """
+    if n <= 0:
+        return
+    try:
+        import torch
+    except ImportError:
+        return
+    torch.set_num_threads(n)
+    logger.info("torch intra-op threads: %d", n)

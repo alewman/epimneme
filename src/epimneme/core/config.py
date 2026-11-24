@@ -35,6 +35,12 @@ class EngramConfig:
     # HuggingFace gating problem and lets a GPU host absorb the cost of a larger
     # model; see epimneme/embedding.py.
     embedding_backend: str = "sentence-transformers"
+    # Torch intra-op threads for the in-process models (embedding, reranker).
+    # MEASURED 2026-11-24 on a 32-core host at load ~64: one MiniLM encode took
+    # ~13 s at torch's default (24 threads), 0.87 s at 4 and 78 ms at 1 — the
+    # threads spin against each other on a busy machine. 1 keeps one request
+    # cheap and lets concurrent requests run side by side; 0 = torch default.
+    torch_threads: int = 1
     ollama_url: str = "http://localhost:11434"
     ollama_timeout: float = 60.0
     ollama_batch_size: int = 64
@@ -240,6 +246,7 @@ def default_config() -> EngramConfig:
         embedding_query_prefix=os.environ.get("EPIMNEME_EMBEDDING_QUERY_PREFIX", ""),
         embedding_doc_prefix=os.environ.get("EPIMNEME_EMBEDDING_DOC_PREFIX", ""),
         embedding_backend=os.environ.get("EPIMNEME_EMBEDDING_BACKEND", "sentence-transformers"),
+        torch_threads=int(os.environ.get("EPIMNEME_TORCH_THREADS", "1")),
         ollama_url=os.environ.get("EPIMNEME_OLLAMA_URL", "http://localhost:11434"),
         ollama_timeout=float(os.environ.get("EPIMNEME_OLLAMA_TIMEOUT", "60")),
         ollama_batch_size=int(os.environ.get("EPIMNEME_OLLAMA_BATCH_SIZE", "64")),

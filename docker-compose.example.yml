@@ -62,6 +62,9 @@ services:
       EPIMNEME_EMBEDDING_DIM: ${EPIMNEME_EMBEDDING_DIM:-384}
       EPIMNEME_EMBEDDING_QUERY_PREFIX: ${EPIMNEME_EMBEDDING_QUERY_PREFIX:-}
       EPIMNEME_EMBEDDING_DOC_PREFIX: ${EPIMNEME_EMBEDDING_DOC_PREFIX:-}
+      # Torch threads per encode. 1 stays fast on a busy host and lets requests
+      # run in parallel; raise it only on an otherwise idle machine. 0 = torch default.
+      EPIMNEME_TORCH_THREADS: ${EPIMNEME_TORCH_THREADS:-1}
       EPIMNEME_OLLAMA_URL: ${EPIMNEME_OLLAMA_URL:-http://localhost:11434}
       EPIMNEME_OLLAMA_TIMEOUT: ${EPIMNEME_OLLAMA_TIMEOUT:-60}
       EPIMNEME_OLLAMA_BATCH_SIZE: ${EPIMNEME_OLLAMA_BATCH_SIZE:-64}
