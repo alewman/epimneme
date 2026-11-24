@@ -164,10 +164,51 @@ async def _authorized_memory(auth: AuthContext, memory_id: str):
     return memory
 
 
+async def _require_memory_access(auth: AuthContext, memory_id: str) -> None:
+    """``_authorized_memory`` for callers that report errors as ValueError
+    (MCP tools, and REST routes that turn ValueError into 403). Guards the
+    by-id arguments that rode along with a project-checked call: a key could
+    obsolete any memory in the installation through ``forget_id`` or
+    ``supersedes`` just by knowing its id."""
+    try:
+        await _authorized_memory(auth, memory_id)
+    except HTTPException:
+        raise ValueError(f"Memory {memory_id} not found") from None
+
+
+async def _require_session_access(auth: AuthContext, session_id: str) -> None:
+    """Refuse to end a session in a project this key cannot access."""
+    mgr = get_manager()
+    session = await mgr.store.get_session_by_id(session_id)
+    if session is None:
+        return  # the manager reports an unknown session itself
+    project = (await mgr.store.get_project_by_id(session.project_id)
+               if session.project_id else None)
+    if project is None:
+        allowed = auth.can_access_project(None)  # admin / "*" keys only
+    else:
+        allowed = (project.owner_id == auth.owner_id
+                   and auth.can_access_project(project.name))
+    if not allowed:
+        raise ValueError(f"Session {session_id} not found")
+
+
 async def _try_claim_project(auth: AuthContext, project: Optional[str]) -> None:
-    """If *auth* can't access *project* yet, auto-claim if it doesn't exist."""
-    if not project or auth.can_access_project(project):
+    """If *auth* can't access *project* yet, auto-claim if it doesn't exist.
+
+    Every write and session path, MCP and REST, passes through here, so this is
+    also where a scoped key that omits the project is refused. It used to
+    return early on a missing project, and the manager then resolved None to
+    the owner's ``__global__`` project: OBSERVED 2026-11-24, a key scoped to
+    named projects recalled, wrote and obsoleted global memories.
+    """
+    if auth.can_access_project(project):
         return
+    if not project:
+        raise ValueError(
+            f"API key '{auth.name}' is scoped to specific projects, so "
+            f"'project' is required; omitting it would use the global space."
+        )
 
     mgr = get_manager()
     existing = await mgr.get_project(project)
@@ -381,6 +422,10 @@ async def api_session_end(
     req: SessionEndRequest,
     auth: AuthContext = Depends(get_auth),
 ):
+    try:
+        await _require_session_access(auth, req.session_id)
+    except ValueError as exc:
+        return JSONResponse(status_code=404, content={"error": str(exc)})
     mgr = get_manager()
     result = await mgr.session_end(
         session_id=req.session_id, summary=req.summary, handoff=req.handoff
@@ -400,6 +445,11 @@ async def api_remember(
         await _try_claim_project(auth, req.project)
     except ValueError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
+    if req.supersedes:
+        try:
+            await _require_memory_access(auth, req.supersedes)
+        except ValueError as exc:
+            return JSONResponse(status_code=404, content={"error": str(exc)})
     mgr = get_manager()
     result = await mgr.remember(
         content=req.content,
@@ -1531,7 +1581,8 @@ async def session_end(
         summary: What you accomplished — be specific about changes made
         handoff: Instructions for the next agent — next steps, blockers, etc.
     """
-    await get_mcp_auth(ctx)
+    auth = await get_mcp_auth(ctx)
+    await _require_session_access(auth, session_id)
     mgr = get_manager()
     return await mgr.session_end(
         session_id=session_id, summary=summary, handoff=handoff
@@ -1578,11 +1629,14 @@ async def remember(
         forget_id: Pass a memory ID here to mark it obsolete (content becomes the reason)
         session_id: Session ID from session_start (links memory to this session)
     """
-    await _mcp_enforce_project(ctx, project)
+    auth = await _mcp_enforce_project(ctx, project)
     mgr = get_manager()
 
     if forget_id:
+        await _require_memory_access(auth, forget_id)
         return await mgr.forget(forget_id, reason=content)
+    if supersedes:
+        await _require_memory_access(auth, supersedes)
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else []
     entity_list = [e.strip() for e in related_to.split(",")] if related_to else []

@@ -311,3 +311,57 @@ class TestResolution:
             assert proj is not None and proj.id == gid
         finally:
             reset_current_owner(token)
+
+
+# ── Scoped keys at the server boundary ──────────────────────────────────────
+
+
+class TestScopedKeyBoundary:
+    """OBSERVED 2026-11-24 on the live server: a key scoped to named projects
+    recalled from the global space by omitting the project, and obsoleted
+    global memories through ``forget_id`` / ``supersedes``. The by-id fields
+    were not checked at all, so any project's memory was reachable."""
+
+    @pytest_asyncio.fixture
+    async def mgr(self, store: PostgresStore):
+        from unittest.mock import patch
+        from epimneme.core.config import default_config
+        m = MemoryManager(default_config(), store)
+        with patch("epimneme.server.get_manager", return_value=m):
+            yield m
+
+    def _scoped(self, *projects):
+        return AuthContext(name="scoped", role="agent", projects=list(projects),
+                           source="api_key", api_key_id="k", owner_id=DEFAULT_OWNER_ID)
+
+    async def test_omitting_the_project_is_refused(self, store, mgr):
+        from epimneme.server import _try_claim_project
+        with pytest.raises(ValueError, match="'project' is required"):
+            await _try_claim_project(self._scoped("mine"), None)
+        admin = AuthContext(name="admin", role="admin", projects=["*"], source="api_key")
+        await _try_claim_project(admin, None)  # admins keep the global space
+
+    async def test_by_id_targets_must_be_in_the_grant(self, store, mgr):
+        from epimneme.server import _require_memory_access
+        mine = await _project(store, DEFAULT_OWNER_ID, "mine")
+        other = await _project(store, DEFAULT_OWNER_ID, "other")
+        gid = await store.ensure_global_project()
+        own = await _memory(store, mine.id, "mine")
+        theirs = await _memory(store, other.id, "theirs")
+        glob = await _memory(store, gid, "global")
+        auth = self._scoped("mine")
+        await _require_memory_access(auth, own.id)
+        for target in (theirs.id, glob.id, "no-such-id"):
+            with pytest.raises(ValueError, match="not found"):
+                await _require_memory_access(auth, target)
+
+    async def test_sessions_outside_the_grant_cannot_be_ended(self, store, mgr):
+        from epimneme.server import _require_session_access
+        mine = await _project(store, DEFAULT_OWNER_ID, "mine")
+        other = await _project(store, DEFAULT_OWNER_ID, "other")
+        s_mine = await store.create_session(Session(id=str(uuid.uuid4()), project_id=mine.id, task="t"))
+        s_other = await store.create_session(Session(id=str(uuid.uuid4()), project_id=other.id, task="t"))
+        auth = self._scoped("mine")
+        await _require_session_access(auth, s_mine.id)
+        with pytest.raises(ValueError, match="not found"):
+            await _require_session_access(auth, s_other.id)

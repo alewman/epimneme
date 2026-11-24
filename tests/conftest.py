@@ -83,6 +83,9 @@ def mock_store() -> AsyncMock:
     store.search_semantic.return_value = []
     store.search_fulltext.return_value = []
     store.get_memory.return_value = None
+    # Unknown session: the server's ownership check defers to the manager,
+    # which the API tests mock per case.
+    store.get_session_by_id.return_value = None
     store.get_entities_for_memory.return_value = []
     store.explore.return_value = []
     store.get_memories_for_entity.return_value = []
