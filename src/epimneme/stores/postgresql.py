@@ -1084,8 +1084,8 @@ class PostgresStore:
             params.append(json.dumps(tags))
 
         where = " AND ".join(conditions)
-        params.append(query)  # for ts_rank
-        params.append(limit)
+        # Bind in SQL order: ts_rank (SELECT), WHERE conditions, LIMIT.
+        params = [query, *params, limit]
 
         sql = f"""
             SELECT *, ts_rank(content_tsv, websearch_to_tsquery('english', %s)) AS score

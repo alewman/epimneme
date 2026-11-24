@@ -287,6 +287,41 @@ class TestSearch:
         assert len(results) >= 1
         assert "PostgreSQL" in results[0].memory.content
 
+    async def test_fulltext_binds_filters_in_sql_order(self, store: PostgresStore):
+        """Regression: ts_rank's query was bound last though it is the first
+        placeholder, so every value after it slid one slot — filters errored
+        (tags) or silently missed and fell back to trigram. Assert the hit
+        comes from the full-text index, not the fallback."""
+        proj = await store.create_project(Project(name="fts-proj"))
+        other = await store.create_project(Project(name="fts-other"))
+        await store.store_memory(
+            Memory(
+                kind=MemoryKind.FACT,
+                content="CEMLI 1105 change record approved",
+                project_id=proj.id,
+                tags=["cemli", "change"],
+            )
+        )
+        await store.store_memory(
+            Memory(kind=MemoryKind.DECISION, content="CEMLI quirks noted", project_id=proj.id)
+        )
+        await store.store_memory(
+            Memory(kind=MemoryKind.FACT, content="CEMLI elsewhere", project_id=other.id)
+        )
+
+        cases = [
+            ({}, 3),
+            ({"project_id": proj.id}, 2),
+            ({"project_id": proj.id, "tags": ["cemli"]}, 1),
+            ({"tags": ["cemli"]}, 1),
+            ({"kind": MemoryKind.DECISION}, 1),
+            ({"project_id": proj.id, "kind": MemoryKind.FACT}, 1),
+        ]
+        for filters, expected in cases:
+            results = await store.search_fulltext("CEMLI", **filters)
+            assert len(results) == expected, filters
+            assert all(r.source == "fulltext" for r in results), filters
+
     async def test_fulltext_no_results(self, store: PostgresStore):
         await store.store_memory(Memory(kind=MemoryKind.FACT, content="Hello world"))
         results = await store.search_fulltext("zzzznonexistent")
